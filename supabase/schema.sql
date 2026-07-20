@@ -12,6 +12,8 @@ create table if not exists mkt_posts (
   doel              text not null default '',
   fase              text not null default 'Idee',
   campagne          text not null default '',
+  vacature          text not null default '',
+  utm               text not null default '',
   hook              text not null default '',
   script            text not null default '',
   publicatie_datum  date,
@@ -30,6 +32,10 @@ create table if not exists mkt_kanalen (
   kleur    text not null default '#5b8bbf',
   volgorde int  not null default 0
 );
+
+-- Bestaat de tabel al van een eerdere run? Voeg nieuwe kolommen toe.
+alter table mkt_posts add column if not exists vacature text not null default '';
+alter table mkt_posts add column if not exists utm text not null default '';
 
 -- ── RLS: hele team (zelfde model als het pijplijnbord) ──────────
 do $$

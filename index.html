@@ -86,6 +86,40 @@ select,input,button,textarea{font-family:var(--body);font-size:13px}
 .calcell.today .dn{color:#1e6b3f;font-weight:700}
 .calpost{margin-top:4px;font-size:11px;font-weight:600;color:#fff;background:var(--kan,#9aa3b2);border-radius:6px;padding:2px 7px;line-height:1.35;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
 .calpost.done{opacity:.65}.calpost.missed{outline:2px solid #c0392b}
+/* ── INZICHTEN ── */
+#inzwrap{padding:4px 18px 40px;display:none;flex-direction:column;gap:12px}
+.inzgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:12px;align-items:start}
+.inzbox{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px 16px}
+.inzbox h4{margin:0 0 10px;font-family:var(--disp);font-weight:400;font-size:12px;letter-spacing:.07em;text-transform:uppercase;color:var(--steel)}
+.inzbox .toel{font-size:11.5px;color:var(--muted);margin:-6px 0 10px;line-height:1.45}
+.itable{width:100%;border-collapse:collapse;font-size:13px}
+.itable th{text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:.4px;color:var(--muted);padding:6px 6px;border-bottom:1px solid var(--line)}
+.itable td{padding:7px 6px;border-bottom:1px solid #e8ebdd;vertical-align:top}
+.itable tr:last-child td{border-bottom:none}
+.itable .rr{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+.advies{border-left:4px solid var(--glove);background:#f4f8ec;border-radius:8px;padding:9px 12px;margin-bottom:8px;font-size:13px;line-height:1.5}
+.advies b{display:block;font-size:13.5px;margin-bottom:1px}
+.advies.warn{border-left-color:#d9a441;background:#fbf3e2}
+.advies.rood{border-left-color:var(--red);background:#fbeae7}
+.advies small{color:var(--muted);font-size:11px}
+.gapviz{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:7px 0;border-bottom:1px solid #e8ebdd;font-size:13px}
+.gapviz:last-child{border-bottom:none}
+.gapviz .gv{flex:1}.gapviz .gv b{font-size:13.5px}.gapviz .gv small{display:block;color:var(--muted);font-size:11px;margin-top:1px}
+.gapbtn{background:var(--glove);color:#fff;border:none;border-radius:7px;font-size:11.5px;font-weight:600;padding:5px 10px;cursor:pointer;white-space:nowrap}
+.ketenzin{font-size:13px;background:#eef4e0;border:1px solid #c4d09a;border-radius:8px;padding:8px 11px;margin-top:10px;line-height:1.5}
+/* ── IDEE-MODAL ── */
+.ideemodal{position:fixed;top:50%;left:50%;transform:translate(-50%,-46%);background:var(--col);border:1px solid var(--line);border-radius:16px;box-shadow:0 20px 60px rgba(0,0,0,.35);width:560px;max-width:94vw;max-height:86vh;display:flex;flex-direction:column;overflow:hidden}
+.ideemodal h2{font-family:var(--disp);font-weight:400;font-size:16px;margin:0;padding:14px 18px;border-bottom:1px solid var(--line);text-transform:uppercase;display:flex;justify-content:space-between;align-items:center}
+.ideebody{padding:14px 18px;overflow-y:auto;display:flex;flex-direction:column;gap:10px}
+.ideekaart{background:#fff;border:1px solid var(--line);border-radius:10px;padding:11px 13px}
+.ideekaart .it{font-weight:600;font-size:14px}
+.ideekaart .ih{font-size:12.5px;color:#2f6a8a;background:#e6eef4;border:1px solid #b8cfe0;border-radius:7px;padding:4px 9px;margin-top:6px;font-style:italic}
+.ideekaart .im{display:flex;gap:5px;margin-top:7px;flex-wrap:wrap;align-items:center}
+.ideefoot{padding:11px 18px;border-top:1px solid var(--line);display:flex;gap:8px;justify-content:space-between;align-items:center}
+/* ── UTM ── */
+.utmrow{display:flex;gap:6px;align-items:flex-end}
+.utmrow label{flex:1}
+.utmout{font-size:11px;color:var(--muted);word-break:break-all;background:#f2f4ea;border:1px solid var(--line);border-radius:7px;padding:6px 8px;margin-top:4px;display:none}
 /* ── PANEL / SCRIM ── */
 .scrim{position:fixed;inset:0;background:rgba(20,30,35,.4);display:none;z-index:5}.scrim.open{display:block}
 .panel{position:fixed;top:0;right:0;height:100%;width:430px;max-width:94vw;background:var(--col);box-shadow:-8px 0 30px rgba(0,0,0,.18);transform:translateX(100%);transition:transform .22s;display:flex;flex-direction:column}
@@ -159,6 +193,8 @@ textarea{resize:vertical}
     <select class="field" id="kfilter"><option value="*">Alle kanalen</option></select>
     <button class="btn ghost on" id="viewbord">▦ Bord</button>
     <button class="btn ghost" id="viewcal">🗓 Kalender</button>
+    <button class="btn ghost" id="viewinz">💡 Inzichten</button>
+    <button class="btn ghost" id="inspiratie">🎲 Inspiratie</button>
     <button class="btn" id="add">+ Idee / post</button>
     <button class="btn ghost" id="manage">⚙ Kanalen</button>
     <span id="userinfo" style="font-size:11px;color:#9aa781;white-space:nowrap"></span>
@@ -177,6 +213,7 @@ textarea{resize:vertical}
   </div>
   <div class="calgrid" id="calgrid"></div>
 </div></div>
+<div id="inzwrap"></div>
 </div>
 
 <!-- POST PANEL -->
@@ -192,6 +229,7 @@ textarea{resize:vertical}
       <label class="fl" style="flex:1">Doel<select id="f_doel"><option value="">—</option><option>Kandidaten werven</option><option>Employer branding</option><option>Klanten / leadgen</option></select></label>
       <label class="fl" style="flex:1">Fase<select id="f_fase"></select></label>
     </div>
+    <label class="fl">Voor vacature (van het pijplijnbord)<select id="f_vacature"><option value="">— geen specifieke vacature —</option></select></label>
     <label class="fl">Campagne (optioneel, voor Meta-koppeling later)<input id="f_campagne" placeholder="bijv. Operators Q3"></label>
     <label class="fl">Hook / eerste zin<input id="f_hook" placeholder="De eerste 2 seconden…"></label>
     <label class="fl">Script / caption<textarea id="f_script" placeholder="Volledig script of caption — klaar om te kopiëren bij publicatie"></textarea></label>
@@ -199,6 +237,12 @@ textarea{resize:vertical}
       <label class="fl" style="flex:1">Publicatiedatum<input type="date" id="f_datum"></label>
       <label class="fl" style="flex:1">Tijd<input type="time" id="f_tijd"></label>
     </div>
+    <div class="sectt">Meetbare link (UTM)</div>
+    <div class="utmrow">
+      <label class="fl">Doelpagina (waar stuur je mensen heen?)<input id="f_utmbase" placeholder="https://ploeggenoten.nl/…"></label>
+      <button class="btn ghost" id="f_utmgen" type="button" style="padding:9px 12px">🔗 Maak</button>
+    </div>
+    <div class="utmout" id="f_utmout"></div>
     <div class="sectt">Na publicatie</div>
     <label class="fl">Link naar post<input id="f_link" placeholder="https://…"></label>
     <div class="resgrid">
@@ -234,6 +278,16 @@ textarea{resize:vertical}
     <p style="font-size:11.5px;color:var(--muted);margin:4px 0 0">Kanaal verwijderen kan alleen als er geen posts meer op staan.</p>
   </div>
   <div class="pfoot"><button class="btn ghost" id="m_close">Sluiten</button></div>
+</div></div>
+
+<!-- INSPIRATIE MODAL -->
+<div class="scrim" id="iscrim"><div class="ideemodal">
+  <h2>🎲 Inspiratie <button class="x" id="i_close" style="font-size:20px">✕</button></h2>
+  <div class="ideebody" id="ideelist"></div>
+  <div class="ideefoot">
+    <span style="font-size:11.5px;color:var(--muted)">Bewezen formats voor blue-collar werving — pas de klant/functie aan</span>
+    <button class="btn ghost" id="i_reroll">🎲 Andere drie</button>
+  </div>
 </div></div>
 
 <div id="toast"></div>
@@ -304,7 +358,7 @@ const FASES = [
   {k:'Gepubliceerd',  c:'#3d9968'},
   {k:'Learnings',     c:'#4a9d9d'},
 ];
-const state = { posts: [], kanalen: [] };
+const state = { posts: [], kanalen: [], vacs: [], cands: [], fees: null };
 let view = localStorage.getItem('mkt_view') || 'bord';
 let calMaand = null; // 'YYYY-MM' van getoonde kalendermaand
 
@@ -318,7 +372,7 @@ function toast(msg){ const t=document.getElementById('toast'); t.textContent=msg
 function rowToPost(r){
   return {
     id:r.id, titel:r.titel||'', kanaal:r.kanaal||'', format:r.format||'', doel:r.doel||'',
-    fase:r.fase||'Idee', campagne:r.campagne||'', hook:r.hook||'', script:r.script||'',
+    fase:r.fase||'Idee', campagne:r.campagne||'', vacature:r.vacature||'', utm:r.utm||'', hook:r.hook||'', script:r.script||'',
     datum:r.publicatie_datum||'', tijd:r.publicatie_tijd||'', link:r.link||'',
     resultaat:(r.resultaat&&typeof r.resultaat==='object')?r.resultaat:{},
     learnings:r.learnings||'', notities:Array.isArray(r.notities)?r.notities:[],
@@ -328,7 +382,7 @@ function rowToPost(r){
 function postToRow(p){
   return {
     id:p.id, titel:p.titel, kanaal:p.kanaal||'', format:p.format||'', doel:p.doel||'',
-    fase:p.fase, campagne:p.campagne||'', hook:p.hook||'', script:p.script||'',
+    fase:p.fase, campagne:p.campagne||'', vacature:p.vacature||'', utm:p.utm||'', hook:p.hook||'', script:p.script||'',
     publicatie_datum:p.datum||null, publicatie_tijd:p.tijd||'', link:p.link||'',
     resultaat:p.resultaat||{}, learnings:p.learnings||'', notities:p.notities||[]
   };
@@ -345,6 +399,16 @@ async function loadFromDB(){
   if (pR.error || kR.error) { toast('Fout bij laden — herlaad de pagina'); console.error(pR.error,kR.error); return; }
   state.posts   = (pR.data||[]).map(rowToPost);
   state.kanalen = (kR.data||[]);
+  // Bord-data (zelfde Supabase): vacatures + kandidaten voor de keten-inzichten
+  const [vR,cR] = await Promise.all([
+    sb.from('vacatures').select('klant,functie,type,aangemaakt'),
+    sb.from('candidates').select('id,bron,since,fase,geplaatst_op,klant,functie'),
+  ]);
+  state.vacs  = vR.error ? [] : (vR.data||[]);
+  state.cands = cR.error ? [] : (cR.data||[]);
+  // Fees (finance, RLS alleen Tjeerd — faalt stil voor de rest van het team)
+  const fR = await sb.from('fin_placements').select('pipeline_candidate_id,fee_excl,concept');
+  state.fees = fR.error ? null : (fR.data||[]);
 }
 async function upsertPost(p){
   const row = { ...postToRow(p), updated_by: currentUser?.id, updated_at: new Date().toISOString() };
@@ -379,6 +443,9 @@ function refreshKanaalUI(){
   fk.innerHTML = '<option value="">— kies kanaal —</option>' + state.kanalen.map(k=>`<option>${esc(k.naam)}</option>`).join('');
   const ff = document.getElementById('f_fase');
   ff.innerHTML = FASES.map(f=>`<option>${f.k}</option>`).join('');
+  const fv = document.getElementById('f_vacature');
+  fv.innerHTML = '<option value="">— geen specifieke vacature —</option>' +
+    state.vacs.map(v=>{ const key=`${v.klant} — ${v.functie}`; return `<option value="${esc(key)}">${esc(key)}${v.type?' ('+esc(v.type)+')':''}</option>`; }).join('');
 }
 
 // ─── RENDER: DASH ───────────────────────────────────────────────
@@ -414,9 +481,10 @@ function renderDash(){
   el.innerHTML = `
     <div class="panelbox pijp"><h4>Contentvoorraad</h4>
       <div class="big">${nIdee + nScript}</div>
-      <div class="sub">${nIdee} ideeën · ${nScript} scripts klaar</div>
+      <div class="sub">${nIdee} idee${nIdee===1?'':'ën'} · ${nScript} script${nScript===1?'':'s'} klaar</div>
       ${voorraadLaag ? '<div class="chip warn" style="margin-top:8px">⚠ voorraad laag — plan een brainstorm</div>' : ''}
       ${gemist.length ? `<div class="chip alert" style="margin-top:8px">⏰ ${gemist.length} ingeplande post${gemist.length>1?'s':''} over datum</div>` : ''}
+      ${(()=>{const n=P.filter(p=>(p.fase==='Gepubliceerd'||p.fase==='Learnings') && p.datum && p.datum<=isoDaysAgo(3) && !(Number(p.resultaat?.bereik)>0)).length; return n?`<div class="chip warn" style="margin-top:8px;cursor:pointer" onclick="view='inzichten';localStorage.setItem('mkt_view',view);render()">📊 ${n}× resultaten invullen</div>`:'';})()}
     </div>
     <div class="panelbox wk"><h4>Komende 7 dagen</h4><div class="wgrid">${wk}</div></div>
     <div class="panelbox mnd"><h4>Deze maand gepubliceerd</h4>
@@ -453,6 +521,7 @@ function cardHtml(p){
       ${p.format?`<span class="tag">${esc(p.format)}</span>`:''}
       ${p.doel?`<span class="tag doel">${esc(p.doel)}</span>`:''}
       ${p.campagne?`<span class="tag doel">🎯 ${esc(p.campagne)}</span>`:''}
+      ${p.vacature?`<span class="tag doel" title="${esc(p.vacature)}">📌 ${esc(p.vacature.length>24?p.vacature.slice(0,24)+'…':p.vacature)}</span>`:''}
       ${p.notities.length?`<span class="tag">🗒 ${p.notities.length}</span>`:''}
     </div>
     ${when}${script}${res}${learn}
@@ -529,14 +598,159 @@ function renderCal(){
   });
 }
 
+// ─── INZICHTEN-ENGINE ───────────────────────────────────────────
+// Kanaal (marketing) ↔ bron (pijplijnbord): Instagram+Facebook vallen onder 'Meta'
+const KANAAL_BRON = { 'Instagram':'Meta', 'Facebook':'Meta', 'LinkedIn':'LinkedIn', 'TikTok':'TikTok' };
+const PLACED_FASES = ['Contract getekend','Gestart'];
+const PUB = p => p.fase==='Gepubliceerd' || p.fase==='Learnings';
+
+function isoDaysAgo(n){ const d=new Date(); d.setDate(d.getDate()-n); return d.toISOString().slice(0,10); }
+function gem(arr){ return arr.length ? arr.reduce((a,b)=>a+b,0)/arr.length : 0; }
+function fmtN(n){ return Math.round(n).toLocaleString('nl-NL'); }
+
+function ketenAnalyse(dagen=90){
+  const cut = isoDaysAgo(dagen);
+  const groepen = {};
+  const G = naam => groepen[naam] ??= { posts:0, bereik:0, cands:0, plaatsingen:0, fee:0 };
+  state.posts.filter(p=>PUB(p) && (p.datum||'') >= cut).forEach(p=>{
+    const g = G(KANAAL_BRON[p.kanaal] || p.kanaal || 'Overig');
+    g.posts++; g.bereik += Number(p.resultaat?.bereik)||0;
+  });
+  const feeMap = {};
+  (state.fees||[]).forEach(f=>{ if (f.pipeline_candidate_id && !f.concept) feeMap[f.pipeline_candidate_id]=(feeMap[f.pipeline_candidate_id]||0)+(Number(f.fee_excl)||0); });
+  state.cands.forEach(c=>{
+    const bron = c.bron || 'Onbekend';
+    if ((c.since||'') >= cut) G(bron).cands++;
+    if ((c.geplaatst_op||'') >= cut && (PLACED_FASES.includes(c.fase)||c.fase==='Gestopt')) {
+      G(bron).plaatsingen++; G(bron).fee += feeMap[c.id]||0;
+    }
+  });
+  return groepen;
+}
+
+function watWerkt(){
+  const pubs = state.posts.filter(p=>PUB(p) && Number(p.resultaat?.bereik)>0);
+  const adviezen = [];
+  if (pubs.length < 2) return { adviezen, pubs };
+  const tot = gem(pubs.map(p=>Number(p.resultaat.bereik)));
+  const perGroep = (keyFn) => {
+    const m = {};
+    pubs.forEach(p=>{ const k=keyFn(p); if(!k) return; (m[k] ??= []).push(Number(p.resultaat.bereik)); });
+    return Object.entries(m).filter(([,v])=>v.length>=2).map(([k,v])=>({k, avg:gem(v), n:v.length})).sort((a,b)=>b.avg-a.avg);
+  };
+  const fm = perGroep(p=>p.format);
+  if (fm.length>=2 && fm[0].avg >= 1.5*tot)
+    adviezen.push({ico:'🏆', titel:`${fm[0].k} is je sterkste format`, txt:`Gem. ${fmtN(fm[0].avg)} bereik per post (${fm[0].n} posts) — ${(fm[0].avg/tot).toFixed(1)}× je gemiddelde van ${fmtN(tot)}. Plan hier meer van.`});
+  const km = perGroep(p=>p.kanaal);
+  if (km.length>=2 && km[0].avg >= 1.5*tot)
+    adviezen.push({ico:'📣', titel:`${km[0].k} presteert het best`, txt:`Gem. ${fmtN(km[0].avg)} bereik (${km[0].n} posts). Zet je beste content eerst hier in.`});
+  const dagen=['zondag','maandag','dinsdag','woensdag','donderdag','vrijdag','zaterdag'];
+  const dm = perGroep(p=>p.datum ? dagen[new Date(p.datum+'T12:00').getDay()] : '');
+  if (dm.length>=2 && dm[0].avg >= 1.4*tot)
+    adviezen.push({ico:'📅', titel:`${dm[0].k.charAt(0).toUpperCase()+dm[0].k.slice(1)} is je beste dag`, txt:`Posts op ${dm[0].k} halen gem. ${fmtN(dm[0].avg)} bereik (${dm[0].n} posts). Plan je toppers op die dag.`});
+  const met = pubs.filter(p=>/[0-9€]/.test(p.hook||'')), zonder = pubs.filter(p=>!/[0-9€]/.test(p.hook||''));
+  if (met.length>=2 && zonder.length>=2) {
+    const a=gem(met.map(p=>Number(p.resultaat.bereik))), b=gem(zonder.map(p=>Number(p.resultaat.bereik)));
+    if (a >= 1.3*b) adviezen.push({ico:'💶', titel:'Cijfers in je hook werken', txt:`Hooks met een getal of €-bedrag halen gem. ${fmtN(a)} bereik vs ${fmtN(b)} zonder (+${Math.round((a/b-1)*100)}%). Noem salaris of toeslag in de eerste zin.`});
+    else if (b >= 1.3*a) adviezen.push({ico:'🔎', titel:'Cijfer-hooks blijven achter', txt:`Hooks zónder getal doen het bij jou beter (${fmtN(b)} vs ${fmtN(a)}). Test verhalende hooks.`});
+  }
+  const leadKing = pubs.filter(p=>Number(p.resultaat?.leads)>0).sort((a,b)=>b.resultaat.leads-a.resultaat.leads)[0];
+  if (leadKing) adviezen.push({ico:'🎯', titel:`Meeste leads: "${leadKing.titel}"`, txt:`${leadKing.resultaat.leads} leads via ${leadKing.kanaal}${leadKing.format?' ('+leadKing.format+')':''}. Maak hier een vervolg of remake van.`});
+  return { adviezen, pubs };
+}
+
+function vacatureRadar(dagen=14){
+  const cut = isoDaysAgo(dagen);
+  return state.vacs.map(v=>{
+    const key = `${v.klant} — ${v.functie}`;
+    const content = state.posts.filter(p=>p.vacature===key && p.fase!=='Idee');
+    const recent = content.some(p=>(p.datum||'') >= cut || ['Script klaar','Ingepland'].includes(p.fase));
+    const dgnOpen = v.aangemaakt ? Math.floor((Date.now()-new Date(v.aangemaakt))/864e5) : null;
+    return { key, v, dgnOpen, nContent: content.length, gap: !recent };
+  }).filter(x=>x.gap).sort((a,b)=>(b.dgnOpen||0)-(a.dgnOpen||0));
+}
+
+function runway(){
+  const pubs28 = state.posts.filter(p=>PUB(p) && (p.datum||'') >= isoDaysAgo(28)).length;
+  const tempoWk = pubs28/4;
+  const voorraad = state.posts.filter(p=>p.fase==='Idee'||p.fase==='Script klaar').length;
+  const gepland = state.posts.filter(p=>p.fase==='Ingepland' && (p.datum||'') >= todayISO()).length;
+  return { tempoWk, voorraad, gepland, weken: tempoWk>0 ? (voorraad+gepland)/tempoWk : null };
+}
+
+function renderInzichten(){
+  const el = document.getElementById('inzwrap');
+  const K = ketenAnalyse(90);
+  const contentGroepen = ['Meta','LinkedIn','TikTok'];
+  const rows = contentGroepen.filter(g=>K[g]).map(g=>{
+    const d = K[g];
+    const ratio = d.posts>0 && d.cands>0 ? (d.posts/d.cands) : null;
+    return `<tr><td><b>${g}</b><br><small style="color:var(--muted)">${g==='Meta'?'Instagram + Facebook':g}</small></td>
+      <td class="rr">${d.posts}</td><td class="rr">${d.bereik?fmtN(d.bereik):'—'}</td>
+      <td class="rr">${d.cands}</td><td class="rr">${d.plaatsingen}</td>
+      <td class="rr">${state.fees && d.fee ? '€'+fmtN(d.fee) : (state.fees===null?'<span title="alleen zichtbaar voor Tjeerd">🔒</span>':'—')}</td>
+      <td class="rr">${ratio ? ratio.toFixed(1)+' : 1' : '—'}</td></tr>`;
+  }).join('');
+  const overig = Object.entries(K).filter(([g])=>!contentGroepen.includes(g)).reduce((s,[,d])=>({cands:s.cands+d.cands, pl:s.pl+d.plaatsingen}),{cands:0,pl:0});
+  const beste = contentGroepen.filter(g=>K[g]&&K[g].cands>=2&&K[g].posts>=2).sort((a,b)=>(K[b].cands/K[b].posts)-(K[a].cands/K[a].posts))[0];
+  let ketenzin = `Nog te weinig data om de keten te sluiten — publiceer posts en registreer kandidaten met de juiste bron op het bord.`;
+  if (beste) {
+    const d = K[beste], perPost = d.cands/d.posts;
+    const kern = perPost >= 1
+      ? `1 post op <b>${beste}</b> levert gemiddeld <b>${perPost.toFixed(1)} kandidaten</b> op`
+      : `elke <b>${(d.posts/d.cands).toFixed(1)} posts</b> op ${beste} leveren ~1 kandidaat op`;
+    ketenzin = `💡 ${kern.charAt(0).toUpperCase()+kern.slice(1)} (afgelopen 90 dgn).${d.plaatsingen?` Daarvan werden er ${d.plaatsingen} geplaatst${state.fees&&d.fee?` — samen €${fmtN(d.fee)} aan fees`:''}.`:''} Content ís acquisitie.`;
+  }
+
+  const { adviezen, pubs } = watWerkt();
+  const radar = vacatureRadar();
+  const rw = runway();
+  const nag = state.posts.filter(p=>PUB(p) && p.datum && p.datum <= isoDaysAgo(3) && !(Number(p.resultaat?.bereik)>0));
+
+  el.innerHTML = `
+  <div class="inzgrid">
+    <div class="inzbox" style="grid-column:1/-1"><h4>⛓ De keten: content → kandidaat → plaatsing (90 dagen)</h4>
+      <div class="toel">Posts uit dit bord naast kandidaten en plaatsingen met die bron op het pijplijnbord. Zo zie je wat content écht oplevert${state.fees?' — inclusief fees':''}.</div>
+      <div style="overflow-x:auto"><table class="itable"><tr><th>Kanaal → bron</th><th class="rr">Posts</th><th class="rr">Bereik</th><th class="rr">Kandidaten</th><th class="rr">Plaatsingen</th><th class="rr">Fees</th><th class="rr">Posts per kandidaat</th></tr>${rows || '<tr><td colspan="7" style="color:var(--muted)">Nog geen gepubliceerde posts in de laatste 90 dagen.</td></tr>'}</table></div>
+      <div class="ketenzin">${ketenzin}${overig.cands?` <small style="color:var(--muted)">(ter vergelijking: ${overig.cands} kandidaten / ${overig.pl} plaatsingen uit niet-contentbronnen zoals Indeed en referrals)</small>`:''}</div>
+    </div>
+    <div class="inzbox"><h4>🧪 Wat werkt (jouw eigen data)</h4>
+      ${adviezen.length ? adviezen.map(a=>`<div class="advies"><b>${a.ico} ${a.titel}</b>${a.txt}</div>`).join('')
+        : `<div class="toel">Nog te weinig resultaat-data (${pubs.length} posts met bereik). Vul na elke publicatie bereik/likes/leads in — vanaf ±4 posts verschijnen hier patronen: beste format, beste kanaal, beste dag en of cijfer-hooks voor jou werken.</div>`}
+      ${nag.length ? `<div class="advies warn"><b>📊 ${nag.length} gepubliceerde post${nag.length>1?'s':''} zonder resultaten</b>Cijfers invullen duurt 1 minuut en voedt alle analyses hierboven. ${nag.slice(0,3).map(p=>`<u style="cursor:pointer" data-open="${p.id}">${esc(p.titel)}</u>`).join(' · ')}${nag.length>3?' · …':''}</div>`:''}
+    </div>
+    <div class="inzbox"><h4>📡 Vacature-contentradar</h4>
+      <div class="toel">Open vacatures van het pijplijnbord zonder content in de afgelopen 14 dagen én zonder iets in de pijplijn. Oudste eerst — daar knelt het.</div>
+      ${radar.length ? radar.slice(0,8).map(x=>`<div class="gapviz"><div class="gv"><b>${esc(x.key)}</b><small>${x.dgnOpen!=null?x.dgnOpen+' dgn open · ':''}${x.nContent} post${x.nContent===1?'':'s'} ooit</small></div><button class="gapbtn" data-vacpost="${esc(x.key)}">→ maak post</button></div>`).join('')
+        : `<div class="toel" style="margin:0">✅ Elke open vacature heeft recente of geplande content.</div>`}
+    </div>
+    <div class="inzbox"><h4>⏳ Content-runway</h4>
+      <div class="big">${rw.weken===null ? '—' : (rw.weken>=9 ? '9+ wkn' : rw.weken.toFixed(1)+' wkn')}</div>
+      <div class="sub">${rw.voorraad} in voorraad + ${rw.gepland} ingepland · tempo ${rw.tempoWk.toFixed(1)}/week (laatste 4 wkn)</div>
+      ${rw.weken!==null && rw.weken < 2 ? `<div class="advies rood" style="margin-top:10px"><b>🔥 Voorraad bijna droog</b>Op dit tempo zit je binnen ${Math.ceil(rw.weken*7)} dagen zonder content. Plan een brainstorm of gebruik 🎲 Inspiratie.</div>`
+        : rw.weken===null ? `<div class="toel" style="margin-top:8px">Nog geen publicatietempo gemeten — verschijnt na je eerste gepubliceerde posts.</div>` : ''}
+    </div>
+  </div>`;
+
+  el.querySelectorAll('[data-open]').forEach(u=>u.onclick=()=>openEdit(u.dataset.open));
+  el.querySelectorAll('[data-vacpost]').forEach(b=>b.onclick=()=>{
+    const key = b.dataset.vacpost;
+    openEdit(null, { vacature:key, doel:'Kandidaten werven' });
+    document.getElementById('f_titel').value = 'Vacature: ' + key.split(' — ')[1] + ' bij ' + key.split(' — ')[0];
+  });
+}
+
 function render(){
   renderDash();
-  const bord = view==='bord';
-  document.getElementById('board').style.display = bord ? '' : 'none';
-  document.getElementById('calwrap').style.display = bord ? 'none' : 'block';
-  document.getElementById('viewbord').classList.toggle('on', bord);
-  document.getElementById('viewcal').classList.toggle('on', !bord);
-  if (bord) renderBoard(); else renderCal();
+  document.getElementById('board').style.display = view==='bord' ? '' : 'none';
+  document.getElementById('calwrap').style.display = view==='kalender' ? 'block' : 'none';
+  document.getElementById('inzwrap').style.display = view==='inzichten' ? 'flex' : 'none';
+  document.getElementById('viewbord').classList.toggle('on', view==='bord');
+  document.getElementById('viewcal').classList.toggle('on', view==='kalender');
+  document.getElementById('viewinz').classList.toggle('on', view==='inzichten');
+  if (view==='bord') renderBoard();
+  else if (view==='kalender') renderCal();
+  else renderInzichten();
 }
 
 // ─── MOVE + POORTWACHTERS ───────────────────────────────────────
@@ -578,9 +792,13 @@ function openEdit(id, preset={}){
   document.getElementById('f_del').style.display = p ? '' : 'none';
   const v = (el,val)=>{ document.getElementById(el).value = val ?? ''; };
   v('f_titel', p?.titel); v('f_kanaal', preset.kanaal ?? p?.kanaal ?? '');
-  v('f_format', p?.format); v('f_doel', p?.doel);
+  v('f_format', p?.format); v('f_doel', preset.doel ?? p?.doel ?? '');
   v('f_fase', preset.fase ?? p?.fase ?? 'Idee');
+  v('f_vacature', preset.vacature ?? p?.vacature ?? '');
   v('f_campagne', p?.campagne); v('f_hook', p?.hook); v('f_script', p?.script);
+  v('f_utmbase', localStorage.getItem('mkt_utmbase') || '');
+  const uo = document.getElementById('f_utmout');
+  uo.textContent = p?.utm || ''; uo.style.display = p?.utm ? 'block' : 'none';
   v('f_datum', preset.datum ?? p?.datum ?? ''); v('f_tijd', p?.tijd?.slice(0,5));
   v('f_link', p?.link);
   const r = p?.resultaat || {};
@@ -618,7 +836,9 @@ document.getElementById('f_save').onclick = async () => {
     id:'m'+Date.now()+Math.random().toString(36).slice(2,6), notities:[], resultaat:{}, createdAt:new Date().toISOString()
   };
   p.titel=titel; p.kanaal=g('f_kanaal'); p.format=g('f_format'); p.doel=g('f_doel');
-  p.fase=fase; p.campagne=g('f_campagne'); p.hook=g('f_hook'); p.script=document.getElementById('f_script').value;
+  p.fase=fase; p.campagne=g('f_campagne'); p.vacature=g('f_vacature');
+  p.utm=document.getElementById('f_utmout').textContent.trim();
+  p.hook=g('f_hook'); p.script=document.getElementById('f_script').value;
   p.datum=datum; p.tijd=g('f_tijd'); p.link=g('f_link');
   p.resultaat = {
     bereik:Number(g('f_bereik'))||0, likes:Number(g('f_likes'))||0,
@@ -690,6 +910,67 @@ document.getElementById('search').oninput = () => render();
 document.getElementById('kfilter').onchange = () => render();
 document.getElementById('viewbord').onclick = () => { view='bord'; localStorage.setItem('mkt_view',view); render(); };
 document.getElementById('viewcal').onclick = () => { view='kalender'; localStorage.setItem('mkt_view',view); render(); };
+document.getElementById('viewinz').onclick = () => { view='inzichten'; localStorage.setItem('mkt_view',view); render(); };
+
+// ─── UTM-BOUWER ─────────────────────────────────────────────────
+function slug(s){ return String(s||'').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'').replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'').slice(0,40); }
+document.getElementById('f_utmgen').onclick = () => {
+  let base = document.getElementById('f_utmbase').value.trim();
+  if (!base) { toast('Vul eerst de doelpagina in'); return; }
+  if (!/^https?:\/\//.test(base)) base = 'https://' + base;
+  localStorage.setItem('mkt_utmbase', base);
+  const kanaal = document.getElementById('f_kanaal').value || 'social';
+  const camp = document.getElementById('f_campagne').value || document.getElementById('f_titel').value || 'post';
+  const u = new URL(base);
+  u.searchParams.set('utm_source', slug(kanaal));
+  u.searchParams.set('utm_medium', 'social');
+  u.searchParams.set('utm_campaign', slug(camp));
+  u.searchParams.set('utm_content', slug(document.getElementById('f_titel').value)||'post');
+  const uo = document.getElementById('f_utmout');
+  uo.textContent = u.toString(); uo.style.display = 'block';
+  navigator.clipboard.writeText(u.toString()).then(()=>toast('🔗 UTM-link gemaakt en gekopieerd'));
+};
+
+// ─── IDEEËNBANK / INSPIRATIE ────────────────────────────────────
+// Bewezen blue-collar contentformats; {K}=klant, {F}=functie — bij koppeling aan vacature ingevuld
+const IDEEENBANK = [
+  {t:'Dag uit het leven: {F}', f:'Reel / video', d:'Kandidaten werven', h:'04:45. De wekker gaat. Dit is mijn dag als {F}.'},
+  {t:'Salaris-transparantie: wat verdien je écht als {F}?', f:'Reel / video', d:'Kandidaten werven', h:'€X.XXX bruto + XX% toeslag. Zwart op wit.'},
+  {t:'Van sollicitatie tot eerste werkdag in 7 dagen', f:'Carousel', d:'Kandidaten werven', h:'Maandag gebeld, volgende week maandag gestart.'},
+  {t:'Mythe kapot: "productiewerk is voor mensen zonder opties"', f:'Reel / video', d:'Employer branding', h:'Dit vooroordeel kost jou een goede baan.'},
+  {t:'De machine die niemand mag aanraken (behalve jij)', f:'Reel / video', d:'Kandidaten werven', h:'Deze machine is €2 miljoen waard. Jij bedient hem.'},
+  {t:'Ploegendienst-calculator: dit levert de nachtploeg extra op', f:'Carousel', d:'Kandidaten werven', h:'Nachtdienst = +XX%. Reken maar mee.'},
+  {t:'Eerste week van {naam nieuwe kracht} bij {K}', f:'Foto + tekst', d:'Employer branding', h:'Week 1 zit erop. Dit vond hij ervan.'},
+  {t:'Recruiter reageert op werkvloer-fabels', f:'Reel / video', d:'Employer branding', h:'"Uitzendbureaus pakken de helft van je loon." Echt?'},
+  {t:'POV: je eerste meeloopdag bij {K}', f:'Story', d:'Kandidaten werven', h:'Kom mee, we lopen samen een dagje mee.'},
+  {t:'Waarom {naam} na 3 maanden een contract tekende', f:'Foto + tekst', d:'Kandidaten werven', h:'Van flexkracht naar vast. Zo ging dat.'},
+  {t:'5 vragen die jij mag stellen in je sollicitatiegesprek', f:'Carousel', d:'Kandidaten werven', h:'Een gesprek is tweerichtingsverkeer.'},
+  {t:'Achter de schermen: zo ziet de kantine/werkvloer eruit', f:'Story', d:'Employer branding', h:'Geen stockfoto\'s. Dit is het echt.'},
+];
+let _ideeSet = [];
+function rollIdeeen(){
+  const shuffled = [...IDEEENBANK].sort(()=>Math.random()-.5);
+  _ideeSet = shuffled.slice(0,3);
+  document.getElementById('ideelist').innerHTML = _ideeSet.map((i,ix)=>`
+    <div class="ideekaart">
+      <div class="it">${esc(i.t)}</div>
+      <div class="ih">"${esc(i.h)}"</div>
+      <div class="im"><span class="tag">${esc(i.f)}</span><span class="tag doel">${esc(i.d)}</span><span style="flex:1"></span><button class="gapbtn" data-idee="${ix}">+ op het bord</button></div>
+    </div>`).join('');
+  document.querySelectorAll('[data-idee]').forEach(b=>{
+    b.onclick = async () => {
+      const i = _ideeSet[+b.dataset.idee];
+      const p = { id:'m'+Date.now()+Math.random().toString(36).slice(2,6), titel:i.t, kanaal:'', format:i.f, doel:i.d,
+        fase:'Idee', campagne:'', vacature:'', utm:'', hook:i.h, script:'', datum:'', tijd:'', link:'',
+        resultaat:{}, learnings:'', notities:[], createdAt:new Date().toISOString(), _updatedAt:new Date().toISOString() };
+      state.posts.push(p); render(); await upsertPost(p); toast('Idee op het bord gezet');
+    };
+  });
+}
+document.getElementById('inspiratie').onclick = () => { rollIdeeen(); document.getElementById('iscrim').classList.add('open'); };
+document.getElementById('i_reroll').onclick = rollIdeeen;
+document.getElementById('i_close').onclick = () => document.getElementById('iscrim').classList.remove('open');
+document.getElementById('iscrim').onclick = e => { if (e.target.id==='iscrim') document.getElementById('iscrim').classList.remove('open'); };
 document.getElementById('calprev').onclick = () => { const [y,m]=calMaand.split('-').map(Number); const d=new Date(y,m-2,1); calMaand=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`; renderCal(); };
 document.getElementById('calnext').onclick = () => { const [y,m]=calMaand.split('-').map(Number); const d=new Date(y,m,1); calMaand=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`; renderCal(); };
 document.getElementById('calvandaag').onclick = () => { calMaand = todayISO().slice(0,7); renderCal(); };
