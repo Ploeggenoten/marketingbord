@@ -1,0 +1,66 @@
+-- ═══════════════════════════════════════════════════════════════
+-- Ploeggenoten Marketingbord — schema
+-- Draaien in: Supabase SQL Editor (project gyhrwjdlwamyjhxtdypw)
+-- Veilig om opnieuw te draaien (idempotent).
+-- ═══════════════════════════════════════════════════════════════
+
+create table if not exists mkt_posts (
+  id                text primary key,
+  titel             text not null default '',
+  kanaal            text not null default '',
+  format            text not null default '',
+  doel              text not null default '',
+  fase              text not null default 'Idee',
+  campagne          text not null default '',
+  hook              text not null default '',
+  script            text not null default '',
+  publicatie_datum  date,
+  publicatie_tijd   text not null default '',
+  link              text not null default '',
+  resultaat         jsonb not null default '{}',
+  learnings         text not null default '',
+  notities          jsonb not null default '[]',
+  created_at        timestamptz not null default now(),
+  updated_by        uuid,
+  updated_at        timestamptz not null default now()
+);
+
+create table if not exists mkt_kanalen (
+  naam     text primary key,
+  kleur    text not null default '#5b8bbf',
+  volgorde int  not null default 0
+);
+
+-- ── RLS: hele team (zelfde model als het pijplijnbord) ──────────
+do $$
+declare t text;
+begin
+  foreach t in array array['mkt_posts','mkt_kanalen'] loop
+    execute format('alter table %I enable row level security', t);
+    execute format('drop policy if exists mkt_team on %I', t);
+    execute format(
+      'create policy mkt_team on %I for all to authenticated
+       using (true) with check (true)', t);
+  end loop;
+end $$;
+
+-- ── Realtime ────────────────────────────────────────────────────
+do $$
+begin
+  begin
+    alter publication supabase_realtime add table mkt_posts;
+  exception when duplicate_object then null;
+  end;
+  begin
+    alter publication supabase_realtime add table mkt_kanalen;
+  exception when duplicate_object then null;
+  end;
+end $$;
+
+-- ── Startkanalen ────────────────────────────────────────────────
+insert into mkt_kanalen (naam, kleur, volgorde) values
+  ('Instagram', '#b23b8f', 1),
+  ('Facebook',  '#1877f2', 2),
+  ('TikTok',    '#20262e', 3),
+  ('LinkedIn',  '#0a66c2', 4)
+on conflict (naam) do nothing;

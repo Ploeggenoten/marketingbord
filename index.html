@@ -1,0 +1,701 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ploeggenoten · Marketingbord</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.39.0/dist/umd/supabase.min.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Anton&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root{--ink:#141a0b;--txt:#20260f;--steel:#3d6400;--glove:#6fa03c;--glove-ink:#ffffff;--paper:#eceee4;--col:#fbfcf8;--card:#ffffff;--line:#d7ddc8;--muted:#697256;--green:#2f8f5b;--red:#c0392b;--amber:#a86a1a;--disp:'Anton','Inter',system-ui,sans-serif;--body:'Inter',system-ui,sans-serif}
+*{box-sizing:border-box}html,body{margin:0;height:100%;background:url('board-bg.jpg') center/cover fixed no-repeat, var(--paper)}
+body{color:var(--txt);font-family:var(--body);-webkit-font-smoothing:antialiased}
+header.top{background:#20301a;color:#f6f7f1;border-bottom:1px solid #33421f;padding:11px 18px;display:flex;align-items:center;gap:9px;flex-wrap:wrap}
+.brand{display:flex;align-items:center;gap:9px}
+.brand span{font-size:12px;color:#9aa781}
+.spacer{flex:1}.tools{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+select,input,button,textarea{font-family:var(--body);font-size:13px}
+.field{background:#2b3a20;color:#f0f2ea;border:1px solid #3e4f2a;border-radius:8px;padding:8px 10px}
+.field::placeholder{color:#9aa781}.field option{color:#0e1207}
+.btn{background:var(--glove);color:var(--glove-ink);border:none;border-radius:8px;padding:9px 13px;font-weight:600;cursor:pointer}
+.btn:hover{filter:brightness(1.05)}
+.btn.ghost{background:transparent;border:1px solid #5b6544;color:#2a3618}
+.top .btn.ghost{background:rgba(111,160,60,.16);border:1px solid #6fa03c;color:#d3ecab}
+.top .btn.ghost:hover{background:rgba(111,160,60,.28)}
+.btn.ghost.on{background:var(--glove);color:var(--glove-ink);border-color:var(--glove)}
+/* ── DASH ── */
+.dash{display:flex;gap:12px;padding:16px 18px;flex-wrap:wrap;align-items:stretch}
+.panelbox{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px 14px}
+.panelbox h4{margin:0 0 8px;font-family:var(--disp);font-weight:400;font-size:11px;letter-spacing:.07em;text-transform:uppercase;color:var(--steel)}
+.pijp{flex:1 1 220px}.wk{flex:2 1 380px}.mnd{flex:1 1 220px}
+.big{font-family:var(--disp);font-weight:400;font-size:26px;line-height:1}
+.sub{font-size:12px;color:var(--muted);margin-top:3px}
+.split{display:flex;gap:14px;margin-top:9px;font-size:12px;flex-wrap:wrap}.split b{font-family:var(--disp);font-weight:400;font-size:16px}
+.wgrid{display:flex;gap:8px;flex-wrap:wrap}
+.wcell{background:#f2f4ea;border:1px solid var(--line);border-radius:9px;padding:7px 10px;min-width:86px;flex:1}
+.wcell .n{font-family:var(--disp);font-weight:400;font-size:20px;line-height:1}
+.wcell .l{font-size:10px;color:var(--muted);margin-top:3px;text-transform:uppercase;letter-spacing:.03em}
+.wcell .t{font-size:10.5px;color:#3a5416;margin-top:3px;line-height:1.35}
+.wcell.today{background:#e4f1e9;border-color:#a8d0b6}
+.chip{background:var(--card);border:1px solid var(--line);border-radius:999px;padding:4px 11px;font-size:12px;display:inline-flex;gap:6px;align-items:center;margin:2px 4px 2px 0}
+.chip b{font-family:var(--disp);font-weight:400}
+.chip.alert{border-color:#e0a89f;background:#fbe2df;color:var(--red)}
+.chip.warn{border-color:#e6c896;background:#faedd6;color:var(--amber)}
+.kdot{display:inline-block;width:9px;height:9px;border-radius:3px}
+/* ── BOARD ── */
+.board{display:flex;gap:12px;padding:4px 18px 40px;overflow-x:auto;align-items:flex-start;min-height:54vh}
+.colm{flex:0 0 262px;background:var(--col);border:1px solid var(--line);border-radius:12px;display:flex;flex-direction:column;max-height:calc(100vh - 290px)}
+.chead{padding:11px 13px;border-top:5px solid var(--ph);border-radius:12px 12px 0 0;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;background:inherit;z-index:1}
+.chead h3{font-family:var(--disp);font-weight:400;font-size:14px;letter-spacing:.05em;text-transform:uppercase;margin:0;color:#20260f}
+.count{font-family:var(--disp);font-size:13px;color:#111;background:var(--ph);border-radius:999px;min-width:22px;height:20px;display:inline-flex;align-items:center;justify-content:center;padding:0 6px}
+.cbody{padding:8px;overflow-y:auto;display:flex;flex-direction:column;gap:8px;min-height:46px}
+.colm.drop .cbody{outline:2px dashed var(--glove);outline-offset:-6px;border-radius:8px}
+.card{background:#fff;border:1px solid #d5dcc8;border-left:6px solid var(--kan,#9aa3b2);border-radius:10px;padding:10px 12px;cursor:grab;box-shadow:0 2px 7px rgba(0,0,0,.18);color:#232b17}
+.card:active{cursor:grabbing}.drag{opacity:.4}
+.card .nm{font-weight:600;font-size:14.5px;line-height:1.25;color:#171d0e}
+.card .meta{display:flex;gap:5px;align-items:center;margin-top:6px;flex-wrap:wrap}
+.tag{font-size:10.5px;font-weight:600;padding:2px 8px;border-radius:999px;border:1px solid #cdd5bd;background:#f1f4ea;color:#4a5540}
+.tag.kan{color:#fff;border:none;background:var(--kan)}
+.tag.doel{background:#eef1e7;color:#5b6544}
+.card .when{margin-top:7px;font-weight:600;font-size:13px;font-variant-numeric:tabular-nums;color:#26331a;background:#eef2e0;border:1px solid #bcc9a0;border-radius:8px;padding:3px 9px;display:inline-flex;gap:6px;align-items:center}
+.card .when.vandaag{background:#2f8f5b;color:#fff;border-color:#2f8f5b}
+.card .when.soon{background:#fbe6d2;border-color:#e0b076;color:#8a521a}
+.card .when.gemist{background:#fbe2df;border-color:#e0a89f;color:#b0392b}
+.card .when.ok{background:#dff0e4;border-color:#9fceb0;color:#1e6b3f}
+.scriptrow{margin-top:7px;display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+.scripttag{font-size:11px;font-weight:600;color:#2f6a8a;background:#e6eef4;border:1px solid #b8cfe0;border-radius:8px;padding:2px 9px}
+.copybtn{border:1px solid #b8cfe0;background:#fff;color:#2f6a8a;border-radius:6px;font-size:10.5px;font-weight:700;padding:2px 8px;cursor:pointer}
+.copybtn:hover{background:#e6eef4}
+.res{margin-top:7px;display:flex;gap:5px;flex-wrap:wrap;font-size:11px;font-weight:600}
+.res span{background:#f1f4ea;border:1px solid #cdd5bd;border-radius:6px;padding:2px 7px;color:#3a5416;font-variant-numeric:tabular-nums}
+.learn{margin-top:7px;font-size:12px;color:#3a5416;background:#eef4e0;border:1px solid #c4d09a;border-radius:8px;padding:5px 9px;line-height:1.4}
+.movebtn{display:none;margin-top:7px;width:100%;background:#f1f4ea;border:1px solid var(--line);border-radius:6px;padding:5px 8px;font-size:11px;font-weight:600;color:#4a4f3a;cursor:pointer;text-align:left}
+@media(hover:none),(max-width:600px){.movebtn{display:block}}
+/* ── KALENDER ── */
+#calwrap{padding:4px 18px 40px;display:none}
+.calbox{background:var(--card);border:1px solid var(--line);border-radius:12px;overflow:hidden}
+.calhead{display:flex;align-items:center;gap:10px;padding:12px 16px;border-bottom:1px solid var(--line)}
+.calhead h3{font-family:var(--disp);font-weight:400;font-size:17px;letter-spacing:.04em;text-transform:uppercase;margin:0;min-width:170px}
+.calnav{background:#eef1e7;border:1px solid var(--line);border-radius:7px;font-size:14px;font-weight:700;padding:3px 11px;cursor:pointer;color:var(--txt)}
+.calgrid{display:grid;grid-template-columns:repeat(7,1fr)}
+.caldow{padding:7px 9px;font-family:var(--disp);font-size:10px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);border-bottom:1px solid var(--line)}
+.calcell{min-height:96px;border-bottom:1px solid #e6e9db;border-right:1px solid #e6e9db;padding:6px 7px;cursor:pointer;vertical-align:top}
+.calcell:hover{background:#f6f8ef}
+.calcell.out{background:#f4f5ee;color:#b0b59e}
+.calcell.today{background:#e9f3ec}
+.calcell .dn{font-weight:600;font-size:12px;color:var(--muted)}
+.calcell.today .dn{color:#1e6b3f;font-weight:700}
+.calpost{margin-top:4px;font-size:11px;font-weight:600;color:#fff;background:var(--kan,#9aa3b2);border-radius:6px;padding:2px 7px;line-height:1.35;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
+.calpost.done{opacity:.65}.calpost.missed{outline:2px solid #c0392b}
+/* ── PANEL / SCRIM ── */
+.scrim{position:fixed;inset:0;background:rgba(20,30,35,.4);display:none;z-index:5}.scrim.open{display:block}
+.panel{position:fixed;top:0;right:0;height:100%;width:430px;max-width:94vw;background:var(--col);box-shadow:-8px 0 30px rgba(0,0,0,.18);transform:translateX(100%);transition:transform .22s;display:flex;flex-direction:column}
+.scrim.open .panel{transform:translateX(0)}
+.panel h2{font-family:var(--disp);font-weight:400;font-size:16px;margin:0;padding:16px 18px;border-bottom:1px solid var(--line);text-transform:uppercase;letter-spacing:.04em}
+.pbody{padding:16px 18px;overflow-y:auto;display:flex;flex-direction:column;gap:12px}
+label.fl{display:flex;flex-direction:column;gap:5px;font-size:12px;color:var(--muted);font-weight:600}
+label.fl select,label.fl input,label.fl textarea{font-size:14px;color:var(--txt);border:1px solid var(--line);border-radius:8px;padding:9px 10px;background:#fff;font-family:var(--body)}
+textarea{resize:vertical}
+#f_script{min-height:150px;font-size:13.5px;line-height:1.5}
+.pfoot{padding:12px 18px;border-top:1px solid var(--line);display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap}
+.notehist{max-height:130px;overflow-y:auto;display:flex;flex-direction:column;gap:6px}
+.noteitem{background:#f2f4ea;border:1px solid var(--line);border-radius:8px;padding:6px 9px;font-size:12.5px}
+.noteitem .nt{font-size:10.5px;color:var(--muted);font-weight:700;text-transform:uppercase;letter-spacing:.3px;display:block;margin-bottom:2px}
+.notehist:empty::after{content:'Nog geen notities';color:var(--muted);font-size:12px}
+.resgrid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.sectt{font-family:var(--disp);font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--steel);margin:6px 0 -4px}
+.updinfo{font-size:10px;color:var(--muted);font-style:italic}
+/* ── KANALEN PANEL ── */
+.krow2{display:flex;align-items:center;gap:9px;padding:7px 0;border-bottom:1px solid var(--line);font-size:13px}
+.krow2 input[type=color]{width:34px;height:26px;border:1px solid var(--line);border-radius:6px;padding:1px;background:#fff;cursor:pointer}
+.krow2 .kn2{flex:1;font-weight:600}
+.x{background:none;border:none;cursor:pointer;color:var(--muted);font-size:14px;padding:2px 5px}
+/* ── PHASE PICKER ── */
+#phasescrim{z-index:10}
+#phasepanel{top:auto;bottom:0;height:auto;max-height:72vh;width:100%;max-width:100%;transform:translateY(100%)}
+#phasescrim.open #phasepanel{transform:translateY(0)}
+#phaselist{padding:10px 12px;display:flex;flex-direction:column;gap:4px;overflow-y:auto}
+.phopt{background:#f4f6ee;border:1px solid var(--line);border-radius:8px;padding:9px 13px;font-size:14px;font-weight:600;color:var(--txt);cursor:pointer;text-align:left;display:flex;align-items:center;gap:8px}
+.phopt .phc{width:10px;height:10px;border-radius:3px;flex-shrink:0}
+.phopt.cur{background:#e4f1e9;border-color:#a8d0b6}
+#toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%) translateY(20px);background:#fff;color:#20260f;border:1px solid var(--line);box-shadow:0 8px 28px rgba(0,0,0,.22);padding:10px 20px;border-radius:99px;font-size:13.5px;font-weight:600;opacity:0;transition:opacity .2s,transform .2s;pointer-events:none;z-index:99;max-width:86vw;text-align:center}
+#toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+/* ── LOGIN ── */
+#loginscreen{position:fixed;inset:0;background:var(--ink);display:flex;align-items:center;justify-content:center;z-index:100}
+.logbox{background:#141a0b;border:1px solid #2a3618;border-radius:16px;padding:36px 32px;width:340px;max-width:92vw;display:flex;flex-direction:column;gap:18px}
+.logbox form{display:flex;flex-direction:column;gap:10px}
+.logbox .field{padding:11px 13px;font-size:14px}
+.logbox .btn{padding:12px;font-size:15px}
+#login_err{color:#ff5d5d;font-size:13px;min-height:18px;text-align:center}
+#login_reset_link{color:#9aa781;font-size:12px;text-align:center;cursor:pointer;text-decoration:underline}
+</style>
+
+<!-- LOGIN -->
+<div id="loginscreen">
+  <div class="logbox">
+    <div style="display:flex;flex-direction:column;align-items:center;gap:6px"><img src="logo-lime.png" alt="Ploeggenoten" style="width:200px;max-width:80%"><span style="font-size:12px;color:#9aa781">Marketingbord · Teaminlog</span></div>
+    <form id="loginform">
+      <input type="email" id="login_email" class="field" placeholder="E-mailadres" autocomplete="email" required>
+      <input type="password" id="login_pw" class="field" placeholder="Wachtwoord" autocomplete="current-password" required>
+      <button type="submit" class="btn">Inloggen</button>
+      <div id="login_err"></div>
+      <span id="login_reset_link">Wachtwoord vergeten?</span>
+    </form>
+  </div>
+</div>
+
+<!-- PHASE PICKER (mobiel) -->
+<div id="phasescrim" class="scrim"><div class="panel" id="phasepanel">
+  <h2 id="phasetitle" style="font-size:14px">Verplaatsen naar…</h2>
+  <div id="phaselist"></div>
+</div></div>
+
+<!-- APP -->
+<div id="app" style="display:none">
+<header class="top">
+  <div class="brand"><img src="logo-lime.png" alt="Ploeggenoten" style="height:20px;display:block"><span>Marketingbord</span></div>
+  <div class="spacer"></div>
+  <div class="tools">
+    <input class="field" id="search" placeholder="Zoek titel/script…" style="width:150px">
+    <select class="field" id="kfilter"><option value="*">Alle kanalen</option></select>
+    <button class="btn ghost on" id="viewbord">▦ Bord</button>
+    <button class="btn ghost" id="viewcal">🗓 Kalender</button>
+    <button class="btn" id="add">+ Idee / post</button>
+    <button class="btn ghost" id="manage">⚙ Kanalen</button>
+    <span id="userinfo" style="font-size:11px;color:#9aa781;white-space:nowrap"></span>
+    <button class="btn ghost" id="logoutbtn">Uitloggen</button>
+  </div>
+</header>
+<div class="dash" id="dash"></div>
+<div class="board" id="board"></div>
+<div id="calwrap"><div class="calbox">
+  <div class="calhead">
+    <h3 id="caltitle"></h3>
+    <button class="calnav" id="calprev">‹</button>
+    <button class="calnav" id="calvandaag">Vandaag</button>
+    <button class="calnav" id="calnext">›</button>
+    <span style="font-size:11.5px;color:var(--muted)">Klik op een dag om een post in te plannen · klik op een post om te bewerken</span>
+  </div>
+  <div class="calgrid" id="calgrid"></div>
+</div></div>
+</div>
+
+<!-- POST PANEL -->
+<div class="scrim" id="scrim"><div class="panel">
+  <h2 id="ptitle">Post</h2>
+  <div class="pbody">
+    <label class="fl">Titel / werktitel<input id="f_titel" placeholder="bijv. Dag uit het leven van een operator"></label>
+    <div style="display:flex;gap:10px">
+      <label class="fl" style="flex:1">Kanaal<select id="f_kanaal"></select></label>
+      <label class="fl" style="flex:1">Format<select id="f_format"><option value="">—</option><option>Reel / video</option><option>Carousel</option><option>Story</option><option>Foto + tekst</option><option>Tekstpost</option><option>Advertentie</option><option>Anders</option></select></label>
+    </div>
+    <div style="display:flex;gap:10px">
+      <label class="fl" style="flex:1">Doel<select id="f_doel"><option value="">—</option><option>Kandidaten werven</option><option>Employer branding</option><option>Klanten / leadgen</option></select></label>
+      <label class="fl" style="flex:1">Fase<select id="f_fase"></select></label>
+    </div>
+    <label class="fl">Campagne (optioneel, voor Meta-koppeling later)<input id="f_campagne" placeholder="bijv. Operators Q3"></label>
+    <label class="fl">Hook / eerste zin<input id="f_hook" placeholder="De eerste 2 seconden…"></label>
+    <label class="fl">Script / caption<textarea id="f_script" placeholder="Volledig script of caption — klaar om te kopiëren bij publicatie"></textarea></label>
+    <div style="display:flex;gap:10px">
+      <label class="fl" style="flex:1">Publicatiedatum<input type="date" id="f_datum"></label>
+      <label class="fl" style="flex:1">Tijd<input type="time" id="f_tijd"></label>
+    </div>
+    <div class="sectt">Na publicatie</div>
+    <label class="fl">Link naar post<input id="f_link" placeholder="https://…"></label>
+    <div class="resgrid">
+      <label class="fl">Bereik<input type="number" id="f_bereik" min="0" placeholder="0"></label>
+      <label class="fl">Likes<input type="number" id="f_likes" min="0" placeholder="0"></label>
+      <label class="fl">Reacties<input type="number" id="f_reacties" min="0" placeholder="0"></label>
+      <label class="fl">Leads / sollicitaties<input type="number" id="f_leads" min="0" placeholder="0"></label>
+    </div>
+    <label class="fl">Learnings — wat werkte (niet)?<textarea id="f_learnings" placeholder="bijv. hook met salaris werkt 3× beter dan sfeerbeeld" style="min-height:70px"></textarea></label>
+    <div class="fl"><span>Notitie-historie</span><div id="f_notehist" class="notehist"></div></div>
+    <label class="fl">Nieuwe notitie<textarea id="f_note" placeholder="Typ een notitie — wordt met datum en naam bewaard" style="min-height:52px"></textarea></label>
+    <div id="f_updinfo" class="updinfo"></div>
+  </div>
+  <div class="pfoot">
+    <button class="btn ghost" id="f_del" style="display:none;color:var(--red);border-color:#c9a49e">Verwijderen</button>
+    <button class="btn ghost" id="f_copy" style="color:#2f6a8a;border-color:#b8cfe0">📋 Kopieer script</button>
+    <button class="btn ghost" id="f_cancel">Annuleren</button>
+    <button class="btn" id="f_save">Opslaan</button>
+  </div>
+</div></div>
+
+<!-- KANALEN PANEL -->
+<div class="scrim" id="mscrim"><div class="panel">
+  <h2>Kanalen</h2>
+  <div class="pbody">
+    <div id="klist"></div>
+    <hr style="border:none;border-top:1px solid var(--line)">
+    <div style="display:flex;gap:8px;align-items:center">
+      <input class="field" id="m_knaam" placeholder="Nieuw kanaal" style="flex:1;color:#fff">
+      <input type="color" id="m_kkleur" value="#5b8bbf" style="width:40px;height:34px;border:1px solid var(--line);border-radius:8px;background:#fff;cursor:pointer">
+      <button class="btn" id="m_addk">+</button>
+    </div>
+    <p style="font-size:11.5px;color:var(--muted);margin:4px 0 0">Kanaal verwijderen kan alleen als er geen posts meer op staan.</p>
+  </div>
+  <div class="pfoot"><button class="btn ghost" id="m_close">Sluiten</button></div>
+</div></div>
+
+<div id="toast"></div>
+
+<script>
+const SUPABASE_URL  = 'https://gyhrwjdlwamyjhxtdypw.supabase.co';
+const SUPABASE_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imd5aHJ3amRsd2FteWpoeHRkeXB3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODE3ODgwMzUsImV4cCI6MjA5NzM2NDAzNX0.M2huzUfbYtcOqimYIkcuGW-6BCion4HqJVn7TxtkZ9c';
+const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON, { auth: { persistSession: false } });
+let currentUser = null, currentProfile = null, rtChannel = null;
+
+// ─── AUTH (zelfde patroon als pijplijnbord) ─────────────────────
+document.getElementById('loginform').onsubmit = async e => {
+  e.preventDefault();
+  const email = document.getElementById('login_email').value;
+  const pw    = document.getElementById('login_pw').value;
+  document.getElementById('login_err').textContent = '';
+  const { error } = await sb.auth.signInWithPassword({ email, password: pw });
+  if (error) document.getElementById('login_err').textContent = 'Inloggen mislukt: ' + error.message;
+};
+document.getElementById('login_reset_link').onclick = async () => {
+  const email = document.getElementById('login_email').value;
+  if (!email) { alert('Vul eerst je e-mailadres in'); return; }
+  const { error } = await sb.auth.resetPasswordForEmail(email);
+  document.getElementById('login_err').textContent = error ? error.message : '✓ E-mail verstuurd';
+};
+document.getElementById('logoutbtn').onclick = async () => {
+  try { await sb.auth.signOut(); } catch(e) {}
+  localStorage.clear(); window.location.reload();
+};
+
+let _appShowing = false;
+async function initApp(user) {
+  currentUser = user;
+  document.getElementById('loginscreen').style.display = 'none';
+  document.getElementById('app').style.display = '';
+  const { data: prof } = await sb.from('profiles').select('*').eq('id', currentUser.id).single();
+  currentProfile = prof;
+  document.getElementById('userinfo').textContent = prof?.naam || currentUser.email;
+  await loadFromDB();
+  refreshKanaalUI(); render();
+  setupRealtime();
+}
+function showLogin() {
+  _appShowing = false; currentUser = null; currentProfile = null;
+  document.getElementById('loginscreen').style.display = 'flex';
+  document.getElementById('app').style.display = 'none';
+  if (rtChannel) { rtChannel.unsubscribe(); rtChannel = null; }
+}
+sb.auth.onAuthStateChange(async (event, session) => {
+  if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
+    if (_appShowing) return;
+    _appShowing = true;
+    await initApp(session.user);
+  } else if (event === 'INITIAL_SESSION') {
+    if (!session?.user) { showLogin(); return; }
+    const { data, error } = await sb.auth.refreshSession();
+    if (error || !data?.session) { showLogin(); return; }
+  } else if (event === 'SIGNED_OUT' || !session?.user) {
+    showLogin();
+  }
+});
+
+// ─── STATE & CONSTANTEN ─────────────────────────────────────────
+const FASES = [
+  {k:'Idee',          c:'#9aa3b2'},
+  {k:'Script klaar',  c:'#9575b8'},
+  {k:'Ingepland',     c:'#d9a441'},
+  {k:'Gepubliceerd',  c:'#3d9968'},
+  {k:'Learnings',     c:'#4a9d9d'},
+];
+const state = { posts: [], kanalen: [] };
+let view = localStorage.getItem('mkt_view') || 'bord';
+let calMaand = null; // 'YYYY-MM' van getoonde kalendermaand
+
+function todayISO(){ const d=new Date(); return d.toISOString().slice(0,10); }
+function fmtD(iso){ if(!iso) return ''; const [y,m,d]=iso.split('-'); return `${d}-${m}-${y.slice(2)}`; }
+function esc(s){ return String(s??'').replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+function kanaalKleur(naam){ const k = state.kanalen.find(x=>x.naam===naam); return k ? k.kleur : '#9aa3b2'; }
+function toast(msg){ const t=document.getElementById('toast'); t.textContent=msg; t.classList.add('show'); clearTimeout(t._h); t._h=setTimeout(()=>t.classList.remove('show'),2600); }
+
+// ─── DATA MAPPING ───────────────────────────────────────────────
+function rowToPost(r){
+  return {
+    id:r.id, titel:r.titel||'', kanaal:r.kanaal||'', format:r.format||'', doel:r.doel||'',
+    fase:r.fase||'Idee', campagne:r.campagne||'', hook:r.hook||'', script:r.script||'',
+    datum:r.publicatie_datum||'', tijd:r.publicatie_tijd||'', link:r.link||'',
+    resultaat:(r.resultaat&&typeof r.resultaat==='object')?r.resultaat:{},
+    learnings:r.learnings||'', notities:Array.isArray(r.notities)?r.notities:[],
+    createdAt:r.created_at||'', _updatedBy:r.updated_by, _updatedAt:r.updated_at
+  };
+}
+function postToRow(p){
+  return {
+    id:p.id, titel:p.titel, kanaal:p.kanaal||'', format:p.format||'', doel:p.doel||'',
+    fase:p.fase, campagne:p.campagne||'', hook:p.hook||'', script:p.script||'',
+    publicatie_datum:p.datum||null, publicatie_tijd:p.tijd||'', link:p.link||'',
+    resultaat:p.resultaat||{}, learnings:p.learnings||'', notities:p.notities||[]
+  };
+}
+
+// ─── LOAD / SAVE ────────────────────────────────────────────────
+async function loadFromDB(){
+  let attempts = 0, pR, kR;
+  while (attempts < 3) {
+    [pR,kR] = await Promise.all([ sb.from('mkt_posts').select('*'), sb.from('mkt_kanalen').select('*').order('volgorde') ]);
+    if (!pR.error && !kR.error) break;
+    attempts++; await new Promise(r=>setTimeout(r,800));
+  }
+  if (pR.error || kR.error) { toast('Fout bij laden — herlaad de pagina'); console.error(pR.error,kR.error); return; }
+  state.posts   = (pR.data||[]).map(rowToPost);
+  state.kanalen = (kR.data||[]);
+}
+async function upsertPost(p){
+  const row = { ...postToRow(p), updated_by: currentUser?.id, updated_at: new Date().toISOString() };
+  const { error } = await sb.from('mkt_posts').upsert(row);
+  if (error) { console.error('upsertPost', error); toast('Opslaan mislukt'); }
+}
+async function deletePostDB(id){ await sb.from('mkt_posts').delete().eq('id', id); }
+
+function setupRealtime(){
+  if (rtChannel) return;
+  rtChannel = sb.channel('mkt-v1')
+    .on('postgres_changes', {event:'*', schema:'public', table:'mkt_posts'}, async () => { await loadFromDB(); render(); })
+    .on('postgres_changes', {event:'*', schema:'public', table:'mkt_kanalen'}, async () => { await loadFromDB(); refreshKanaalUI(); render(); })
+    .subscribe();
+}
+
+// ─── FILTERS & AFGELEIDEN ───────────────────────────────────────
+function filtered(){
+  const q = document.getElementById('search').value.trim().toLowerCase();
+  const kf = document.getElementById('kfilter').value;
+  return state.posts.filter(p => {
+    if (kf !== '*' && p.kanaal !== kf) return false;
+    if (q && !(p.titel+' '+p.script+' '+p.hook+' '+p.campagne).toLowerCase().includes(q)) return false;
+    return true;
+  });
+}
+function refreshKanaalUI(){
+  const kf = document.getElementById('kfilter'); const cur = kf.value;
+  kf.innerHTML = '<option value="*">Alle kanalen</option>' + state.kanalen.map(k=>`<option>${esc(k.naam)}</option>`).join('');
+  if ([...kf.options].some(o=>o.value===cur)) kf.value = cur;
+  const fk = document.getElementById('f_kanaal');
+  fk.innerHTML = '<option value="">— kies kanaal —</option>' + state.kanalen.map(k=>`<option>${esc(k.naam)}</option>`).join('');
+  const ff = document.getElementById('f_fase');
+  ff.innerHTML = FASES.map(f=>`<option>${f.k}</option>`).join('');
+}
+
+// ─── RENDER: DASH ───────────────────────────────────────────────
+function renderDash(){
+  const el = document.getElementById('dash');
+  const P = state.posts;
+  const today = todayISO();
+  const nIdee = P.filter(p=>p.fase==='Idee').length;
+  const nScript = P.filter(p=>p.fase==='Script klaar').length;
+  const gemist = P.filter(p=>p.fase==='Ingepland' && p.datum && p.datum < today);
+  const maand = today.slice(0,7);
+  const pubM = P.filter(p=>(p.fase==='Gepubliceerd'||p.fase==='Learnings') && (p.datum||'').startsWith(maand));
+  const som = key => pubM.reduce((s,p)=>s+(Number(p.resultaat?.[key])||0),0);
+
+  // komende 7 dagen
+  let wk = '';
+  for (let i=0;i<7;i++){
+    const d = new Date(); d.setDate(d.getDate()+i);
+    const iso = d.toISOString().slice(0,10);
+    const dag = ['zo','ma','di','wo','do','vr','za'][d.getDay()];
+    const items = P.filter(p=>p.datum===iso && (p.fase==='Ingepland'||p.fase==='Gepubliceerd'||p.fase==='Learnings'));
+    wk += `<div class="wcell${i===0?' today':''}"><div class="n">${items.length||'·'}</div><div class="l">${dag} ${fmtD(iso).slice(0,5)}</div>${items.slice(0,3).map(p=>`<div class="t"><span class="kdot" style="background:${kanaalKleur(p.kanaal)}"></span> ${esc(p.titel.slice(0,22))}</div>`).join('')}</div>`;
+  }
+
+  // kanaalverdeling laatste 30 dagen gepubliceerd
+  const d30 = new Date(); d30.setDate(d30.getDate()-30);
+  const iso30 = d30.toISOString().slice(0,10);
+  const pub30 = P.filter(p=>(p.fase==='Gepubliceerd'||p.fase==='Learnings') && p.datum >= iso30);
+  const perK = {};
+  pub30.forEach(p=>{ perK[p.kanaal||'—'] = (perK[p.kanaal||'—']||0)+1; });
+
+  const voorraadLaag = (nIdee + nScript) < 3;
+  el.innerHTML = `
+    <div class="panelbox pijp"><h4>Contentvoorraad</h4>
+      <div class="big">${nIdee + nScript}</div>
+      <div class="sub">${nIdee} ideeën · ${nScript} scripts klaar</div>
+      ${voorraadLaag ? '<div class="chip warn" style="margin-top:8px">⚠ voorraad laag — plan een brainstorm</div>' : ''}
+      ${gemist.length ? `<div class="chip alert" style="margin-top:8px">⏰ ${gemist.length} ingeplande post${gemist.length>1?'s':''} over datum</div>` : ''}
+    </div>
+    <div class="panelbox wk"><h4>Komende 7 dagen</h4><div class="wgrid">${wk}</div></div>
+    <div class="panelbox mnd"><h4>Deze maand gepubliceerd</h4>
+      <div class="big">${pubM.length}</div>
+      <div class="split"><span><b>${som('bereik').toLocaleString('nl-NL')}</b> bereik</span><span><b>${som('leads')}</b> leads</span></div>
+      <div style="margin-top:8px">${Object.entries(perK).map(([k,n])=>`<span class="chip"><span class="kdot" style="background:${kanaalKleur(k)}"></span>${esc(k)} <b>${n}</b></span>`).join('') || '<span class="sub">Nog niets gepubliceerd (30 dgn)</span>'}</div>
+    </div>`;
+}
+
+// ─── RENDER: BOARD ──────────────────────────────────────────────
+function cardHtml(p){
+  const today = todayISO();
+  let when = '';
+  if (p.datum) {
+    let cls = 'ok';
+    if (p.fase === 'Ingepland') {
+      if (p.datum === today) cls = 'vandaag';
+      else if (p.datum < today) cls = 'gemist';
+      else { const d2=new Date(); d2.setDate(d2.getDate()+2); cls = p.datum <= d2.toISOString().slice(0,10) ? 'soon' : 'ok'; }
+    }
+    when = `<div class="when ${cls}">${p.fase==='Ingepland'?'📅':'✔'} ${fmtD(p.datum)}${p.tijd?' · '+p.tijd.slice(0,5):''}</div>`;
+  }
+  const r = p.resultaat || {};
+  const res = (p.fase==='Gepubliceerd'||p.fase==='Learnings') && (r.bereik||r.likes||r.leads||r.reacties)
+    ? `<div class="res">${r.bereik?`<span>👁 ${Number(r.bereik).toLocaleString('nl-NL')}</span>`:''}${r.likes?`<span>❤ ${r.likes}</span>`:''}${r.reacties?`<span>💬 ${r.reacties}</span>`:''}${r.leads?`<span>🎯 ${r.leads} leads</span>`:''}</div>` : '';
+  const script = p.script
+    ? `<div class="scriptrow"><span class="scripttag">📝 script</span><button class="copybtn" data-copy="${p.id}">kopieer</button></div>` : '';
+  const learn = p.fase==='Learnings' && p.learnings
+    ? `<div class="learn">💡 ${esc(p.learnings.slice(0,110))}${p.learnings.length>110?'…':''}</div>` : '';
+  return `<div class="card" draggable="true" data-id="${p.id}" style="--kan:${kanaalKleur(p.kanaal)}">
+    <div class="nm">${esc(p.titel)||'<i>zonder titel</i>'}</div>
+    <div class="meta">
+      ${p.kanaal?`<span class="tag kan" style="--kan:${kanaalKleur(p.kanaal)}">${esc(p.kanaal)}</span>`:''}
+      ${p.format?`<span class="tag">${esc(p.format)}</span>`:''}
+      ${p.doel?`<span class="tag doel">${esc(p.doel)}</span>`:''}
+      ${p.campagne?`<span class="tag doel">🎯 ${esc(p.campagne)}</span>`:''}
+      ${p.notities.length?`<span class="tag">🗒 ${p.notities.length}</span>`:''}
+    </div>
+    ${when}${script}${res}${learn}
+    <button class="movebtn" data-move="${p.id}">↔ Verplaatsen…</button>
+  </div>`;
+}
+function renderBoard(){
+  const el = document.getElementById('board');
+  const P = filtered();
+  el.innerHTML = FASES.map(f=>{
+    let items = P.filter(p=>p.fase===f.k);
+    if (f.k==='Ingepland') items.sort((a,b)=>(a.datum||'9999').localeCompare(b.datum||'9999'));
+    else if (f.k==='Gepubliceerd'||f.k==='Learnings') items.sort((a,b)=>(b.datum||'').localeCompare(a.datum||''));
+    else items.sort((a,b)=>(b._updatedAt||b.createdAt||'').localeCompare(a._updatedAt||a.createdAt||''));
+    return `<div class="colm" data-fase="${f.k}" style="--ph:${f.c}">
+      <div class="chead"><h3>${f.k}</h3><span class="count">${items.length}</span></div>
+      <div class="cbody">${items.map(cardHtml).join('')}</div>
+    </div>`;
+  }).join('');
+
+  // drag & drop
+  el.querySelectorAll('.card').forEach(c=>{
+    c.ondragstart = e => { e.dataTransfer.setData('text/plain', c.dataset.id); c.classList.add('drag'); };
+    c.ondragend = () => c.classList.remove('drag');
+    c.onclick = e => {
+      if (e.target.dataset.copy) { copyScript(e.target.dataset.copy); return; }
+      if (e.target.dataset.move) { openPhasePicker(e.target.dataset.move); return; }
+      openEdit(c.dataset.id);
+    };
+  });
+  el.querySelectorAll('.colm').forEach(col=>{
+    col.ondragover = e => { e.preventDefault(); col.classList.add('drop'); };
+    col.ondragleave = () => col.classList.remove('drop');
+    col.ondrop = e => {
+      e.preventDefault(); col.classList.remove('drop');
+      move(e.dataTransfer.getData('text/plain'), col.dataset.fase);
+    };
+  });
+}
+
+// ─── RENDER: KALENDER ───────────────────────────────────────────
+function renderCal(){
+  const wrap = document.getElementById('calwrap');
+  if (!calMaand) calMaand = todayISO().slice(0,7);
+  const [y,m] = calMaand.split('-').map(Number);
+  const eerste = new Date(y, m-1, 1);
+  const start = new Date(eerste); start.setDate(1 - ((eerste.getDay()+6)%7)); // maandag vóór/op de 1e
+  const today = todayISO();
+  const P = filtered();
+  document.getElementById('caltitle').textContent = eerste.toLocaleDateString('nl-NL',{month:'long',year:'numeric'});
+  let html = ['ma','di','wo','do','vr','za','zo'].map(d=>`<div class="caldow">${d}</div>`).join('');
+  const d = new Date(start);
+  for (let i=0;i<42;i++){
+    const iso = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+    const out = d.getMonth() !== m-1;
+    const items = P.filter(p=>p.datum===iso).sort((a,b)=>(a.tijd||'').localeCompare(b.tijd||''));
+    html += `<div class="calcell${out?' out':''}${iso===today?' today':''}" data-dag="${iso}">
+      <div class="dn">${d.getDate()}</div>
+      ${items.map(p=>{
+        const missed = p.fase==='Ingepland' && iso < today;
+        const done = p.fase==='Gepubliceerd'||p.fase==='Learnings';
+        return `<div class="calpost${done?' done':''}${missed?' missed':''}" data-id="${p.id}" title="${esc(p.titel)} · ${esc(p.kanaal)} · ${p.fase}" style="--kan:${kanaalKleur(p.kanaal)}">${p.tijd?p.tijd.slice(0,5)+' ':''}${esc(p.titel)}</div>`;
+      }).join('')}
+    </div>`;
+    d.setDate(d.getDate()+1);
+    if (i>=34 && d.getMonth()!==m-1 && d.getDay()===1) break; // stop na volle week buiten de maand
+  }
+  document.getElementById('calgrid').innerHTML = html;
+  wrap.querySelectorAll('.calpost').forEach(cp=>{
+    cp.onclick = e => { e.stopPropagation(); openEdit(cp.dataset.id); };
+  });
+  wrap.querySelectorAll('.calcell').forEach(cell=>{
+    cell.onclick = () => openEdit(null, { datum: cell.dataset.dag, fase:'Ingepland' });
+  });
+}
+
+function render(){
+  renderDash();
+  const bord = view==='bord';
+  document.getElementById('board').style.display = bord ? '' : 'none';
+  document.getElementById('calwrap').style.display = bord ? 'none' : 'block';
+  document.getElementById('viewbord').classList.toggle('on', bord);
+  document.getElementById('viewcal').classList.toggle('on', !bord);
+  if (bord) renderBoard(); else renderCal();
+}
+
+// ─── MOVE + POORTWACHTERS ───────────────────────────────────────
+function move(id, fase){
+  const p = state.posts.find(x=>x.id===id);
+  if (!p || p.fase === fase) return;
+  // Poortwachters: open het paneel met de doel-fase alvast ingevuld
+  if (fase==='Ingepland' && !p.datum) { openEdit(id, {fase}); toast('Publicatiedatum nodig om in te plannen'); return; }
+  if (fase==='Gepubliceerd') {
+    if (!p.datum || p.datum > todayISO()) p.datum = todayISO();
+    openEdit(id, {fase}); toast('Gepubliceerd — vul link en resultaten in'); savePost(p); return;
+  }
+  if (fase==='Learnings' && !p.learnings) { openEdit(id, {fase}); toast('Schrijf je learnings op — dat is de winst van deze kolom'); return; }
+  p.fase = fase;
+  savePost(p); render();
+}
+async function savePost(p){ await upsertPost(p); }
+
+// ─── PHASE PICKER (mobiel) ──────────────────────────────────────
+function openPhasePicker(id){
+  const p = state.posts.find(x=>x.id===id); if (!p) return;
+  document.getElementById('phasetitle').textContent = `"${p.titel}" verplaatsen naar…`;
+  document.getElementById('phaselist').innerHTML = FASES.map(f=>
+    `<button class="phopt${f.k===p.fase?' cur':''}" data-f="${f.k}"><span class="phc" style="background:${f.c}"></span>${f.k}</button>`).join('');
+  const scrim = document.getElementById('phasescrim');
+  scrim.classList.add('open');
+  scrim.querySelectorAll('.phopt').forEach(b=>{
+    b.onclick = () => { scrim.classList.remove('open'); move(id, b.dataset.f); };
+  });
+  scrim.onclick = e => { if (e.target===scrim) scrim.classList.remove('open'); };
+}
+
+// ─── EDIT PANEL ─────────────────────────────────────────────────
+let editId = null;
+function openEdit(id, preset={}){
+  editId = id;
+  const p = id ? state.posts.find(x=>x.id===id) : null;
+  document.getElementById('ptitle').textContent = p ? 'Post bewerken' : 'Nieuw idee / post';
+  document.getElementById('f_del').style.display = p ? '' : 'none';
+  const v = (el,val)=>{ document.getElementById(el).value = val ?? ''; };
+  v('f_titel', p?.titel); v('f_kanaal', preset.kanaal ?? p?.kanaal ?? '');
+  v('f_format', p?.format); v('f_doel', p?.doel);
+  v('f_fase', preset.fase ?? p?.fase ?? 'Idee');
+  v('f_campagne', p?.campagne); v('f_hook', p?.hook); v('f_script', p?.script);
+  v('f_datum', preset.datum ?? p?.datum ?? ''); v('f_tijd', p?.tijd?.slice(0,5));
+  v('f_link', p?.link);
+  const r = p?.resultaat || {};
+  v('f_bereik', r.bereik); v('f_likes', r.likes); v('f_reacties', r.reacties); v('f_leads', r.leads);
+  v('f_learnings', p?.learnings); v('f_note','');
+  document.getElementById('f_notehist').innerHTML = (p?.notities||[]).slice().reverse().map(n=>
+    `<div class="noteitem"><span class="nt">${esc(n.wie||'')} · ${esc((n.t||'').slice(0,16).replace('T',' '))}</span>${esc(n.txt)}</div>`).join('');
+  document.getElementById('f_updinfo').textContent = p?._updatedAt ? `Laatst bewerkt ${p._updatedAt.slice(0,16).replace('T',' ')}` : '';
+  document.getElementById('scrim').classList.add('open');
+  if (!p) setTimeout(()=>document.getElementById('f_titel').focus(), 150);
+}
+function closeEdit(){ document.getElementById('scrim').classList.remove('open'); editId = null; }
+document.getElementById('f_cancel').onclick = closeEdit;
+document.getElementById('scrim').onclick = e => { if (e.target.id==='scrim') closeEdit(); };
+
+document.getElementById('f_copy').onclick = () => {
+  const s = document.getElementById('f_script').value;
+  if (!s) { toast('Geen script om te kopiëren'); return; }
+  navigator.clipboard.writeText(s).then(()=>toast('📋 Script gekopieerd'));
+};
+function copyScript(id){
+  const p = state.posts.find(x=>x.id===id);
+  if (p?.script) navigator.clipboard.writeText(p.script).then(()=>toast('📋 Script gekopieerd'));
+}
+
+document.getElementById('f_save').onclick = async () => {
+  const g = el => document.getElementById(el).value.trim();
+  const titel = g('f_titel');
+  if (!titel) { toast('Titel is verplicht'); return; }
+  const fase = g('f_fase');
+  const datum = g('f_datum');
+  if ((fase==='Ingepland') && !datum) { toast('Publicatiedatum is verplicht bij Ingepland'); return; }
+  if (fase==='Learnings' && !g('f_learnings')) { toast('Vul je learnings in bij deze fase'); return; }
+  const p = editId ? state.posts.find(x=>x.id===editId) : {
+    id:'m'+Date.now()+Math.random().toString(36).slice(2,6), notities:[], resultaat:{}, createdAt:new Date().toISOString()
+  };
+  p.titel=titel; p.kanaal=g('f_kanaal'); p.format=g('f_format'); p.doel=g('f_doel');
+  p.fase=fase; p.campagne=g('f_campagne'); p.hook=g('f_hook'); p.script=document.getElementById('f_script').value;
+  p.datum=datum; p.tijd=g('f_tijd'); p.link=g('f_link');
+  p.resultaat = {
+    bereik:Number(g('f_bereik'))||0, likes:Number(g('f_likes'))||0,
+    reacties:Number(g('f_reacties'))||0, leads:Number(g('f_leads'))||0
+  };
+  p.learnings = g('f_learnings');
+  const note = g('f_note');
+  if (note) p.notities = [...(p.notities||[]), { t:new Date().toISOString(), wie: currentProfile?.naam || currentUser?.email || '', txt: note }];
+  if (!editId) state.posts.push(p);
+  p._updatedAt = new Date().toISOString();
+  closeEdit();
+  render();
+  await upsertPost(p);
+  toast('Opgeslagen');
+};
+document.getElementById('f_del').onclick = async () => {
+  if (!editId) return;
+  const p = state.posts.find(x=>x.id===editId);
+  if (!confirm(`"${p?.titel}" definitief verwijderen?`)) return;
+  state.posts = state.posts.filter(x=>x.id!==editId);
+  await deletePostDB(editId);
+  closeEdit(); render(); toast('Verwijderd');
+};
+
+// ─── KANALEN BEHEER ─────────────────────────────────────────────
+function renderKanalen(){
+  document.getElementById('klist').innerHTML = state.kanalen.map(k=>{
+    const inUse = state.posts.some(p=>p.kanaal===k.naam);
+    return `<div class="krow2">
+      <input type="color" value="${k.kleur}" data-kleur="${esc(k.naam)}">
+      <span class="kn2">${esc(k.naam)}</span>
+      ${inUse ? `<span style="font-size:11px;color:var(--muted)">${state.posts.filter(p=>p.kanaal===k.naam).length} posts</span>`
+              : `<button class="x" data-delk="${esc(k.naam)}" title="Verwijderen">✕</button>`}
+    </div>`;
+  }).join('') || '<p style="font-size:13px;color:var(--muted)">Nog geen kanalen — voeg er hieronder een toe.</p>';
+  document.querySelectorAll('#klist input[type=color]').forEach(inp=>{
+    inp.onchange = async () => {
+      await sb.from('mkt_kanalen').update({kleur: inp.value}).eq('naam', inp.dataset.kleur);
+      const k = state.kanalen.find(x=>x.naam===inp.dataset.kleur); if (k) k.kleur = inp.value;
+      render(); toast('Kleur aangepast');
+    };
+  });
+  document.querySelectorAll('#klist [data-delk]').forEach(b=>{
+    b.onclick = async () => {
+      await sb.from('mkt_kanalen').delete().eq('naam', b.dataset.delk);
+      state.kanalen = state.kanalen.filter(k=>k.naam!==b.dataset.delk);
+      refreshKanaalUI(); renderKanalen(); render();
+    };
+  });
+}
+document.getElementById('manage').onclick = () => { renderKanalen(); document.getElementById('mscrim').classList.add('open'); };
+document.getElementById('m_close').onclick = () => document.getElementById('mscrim').classList.remove('open');
+document.getElementById('mscrim').onclick = e => { if (e.target.id==='mscrim') document.getElementById('mscrim').classList.remove('open'); };
+document.getElementById('m_addk').onclick = async () => {
+  const naam = document.getElementById('m_knaam').value.trim();
+  if (!naam) return;
+  const kleur = document.getElementById('m_kkleur').value;
+  const volgorde = (state.kanalen.at(-1)?.volgorde || 0) + 1;
+  const { error } = await sb.from('mkt_kanalen').upsert({naam, kleur, volgorde});
+  if (error) { toast('Toevoegen mislukt'); return; }
+  state.kanalen.push({naam, kleur, volgorde});
+  document.getElementById('m_knaam').value = '';
+  refreshKanaalUI(); renderKanalen(); render();
+};
+
+// ─── TOP BAR ────────────────────────────────────────────────────
+document.getElementById('add').onclick = () => openEdit(null);
+document.getElementById('search').oninput = () => render();
+document.getElementById('kfilter').onchange = () => render();
+document.getElementById('viewbord').onclick = () => { view='bord'; localStorage.setItem('mkt_view',view); render(); };
+document.getElementById('viewcal').onclick = () => { view='kalender'; localStorage.setItem('mkt_view',view); render(); };
+document.getElementById('calprev').onclick = () => { const [y,m]=calMaand.split('-').map(Number); const d=new Date(y,m-2,1); calMaand=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`; renderCal(); };
+document.getElementById('calnext').onclick = () => { const [y,m]=calMaand.split('-').map(Number); const d=new Date(y,m,1); calMaand=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`; renderCal(); };
+document.getElementById('calvandaag').onclick = () => { calMaand = todayISO().slice(0,7); renderCal(); };
+
+// Vernieuw data als tab weer zichtbaar wordt
+document.addEventListener('visibilitychange', async () => {
+  if (!document.hidden && currentUser) { await loadFromDB(); refreshKanaalUI(); render(); }
+});
+</script>
