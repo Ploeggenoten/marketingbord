@@ -727,9 +727,27 @@ function metaStatsHtml(){
   const candsM = state.cands.filter(c=>c.bron==='Meta' && (c.since||'')>=cut).length;
   const plM = state.cands.filter(c=>c.bron==='Meta' && (c.geplaatst_op||'')>=cut && (PLACED_FASES.includes(c.fase)||c.fase==='Gestopt')).length;
   const keten = spend>0 ? `<div class="ketenzin">💶 €${spend.toFixed(0)} uitgegeven (30 dgn) → ${candsM} Meta-kandidaten op het bord${candsM?` = <b>€${(spend/candsM).toFixed(0)} per kandidaat</b>`:''}${plM?` → ${plM} plaatsing${plM>1?'en':''} = <b>€${(spend/plM).toFixed(0)} per plaatsing</b>`:''}</div>` : '';
+  // Per dag (laatste 14 dagen) — dagelijkse bewaking
+  const perDag = {};
+  state.meta.filter(r=>(r.datum||'')>=isoDaysAgo(14)).forEach(r=>{
+    const d = perDag[r.datum] ??= { uitgegeven:0, impressies:0, kliks:0, leads:0 };
+    d.uitgegeven+=Number(r.uitgegeven)||0; d.impressies+=Number(r.impressies)||0; d.kliks+=Number(r.kliks)||0; d.leads+=Number(r.leads)||0;
+  });
+  const dagen=['zo','ma','di','wo','do','vr','za'];
+  const maxSp = Math.max(...Object.values(perDag).map(d=>d.uitgegeven), 1);
+  const dagRows = Object.entries(perDag).sort((a,b)=>b[0].localeCompare(a[0])).map(([dt,d])=>{
+    const cpc = d.kliks? d.uitgegeven/d.kliks : 0;
+    return `<tr><td><b>${dagen[new Date(dt+'T12:00').getDay()]}</b> ${fmtD(dt)}</td>
+      <td class="rr">€${d.uitgegeven.toFixed(2)}</td>
+      <td style="min-width:90px"><div class="cbar" style="height:7px;border-radius:4px;background:#e2e6d6;overflow:hidden"><i style="display:block;height:100%;width:${Math.round(d.uitgegeven/maxSp*100)}%;background:#6fa03c"></i></div></td>
+      <td class="rr">${fmtN(d.kliks)}</td><td class="rr">€${cpc.toFixed(2)}</td><td class="rr">${d.leads}</td>
+      <td class="rr">${d.leads?'€'+(d.uitgegeven/d.leads).toFixed(2):'—'}</td></tr>`;
+  }).join('');
   return `<div style="overflow-x:auto"><table class="itable metatable"><tr><th>Campagne / advertentie</th><th class="rr">Uitgegeven</th><th class="rr">Impressies</th><th class="rr">Kliks</th><th class="rr">CPC</th><th class="rr">CTR</th><th class="rr">Leads</th><th class="rr">€/lead</th></tr>${rows}</table></div>
   ${keten}
-  <div class="syncnote">Laatste sync: ${laatst||'onbekend'} · 30 dagen · richtlijn NL: Meta-CPC voor vacatureverkeer ± €0,30-0,40</div>`;
+  <h4 style="margin-top:14px">📅 Per dag (laatste 14 dagen)</h4>
+  <div style="overflow-x:auto"><table class="itable metatable"><tr><th>Dag</th><th class="rr">Uitgegeven</th><th></th><th class="rr">Kliks</th><th class="rr">CPC</th><th class="rr">Leads</th><th class="rr">€/lead</th></tr>${dagRows || '<tr><td colspan="7" style="color:var(--muted)">Nog geen dagdata.</td></tr>'}</table></div>
+  <div class="syncnote">Sync draait dagelijks automatisch server-side (07:30 en 13:30) · laatste: ${laatst||'onbekend'} · richtlijn NL: Meta-CPC voor vacatureverkeer ± €0,30-0,40</div>`;
 }
 // ─── META-SYNC (Edge Function, token server-side) ───────────────
 let _metaSyncing = false;

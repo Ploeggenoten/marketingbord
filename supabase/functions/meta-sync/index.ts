@@ -4,7 +4,9 @@
 // Secrets (Dashboard → Edge Functions → Secrets):
 //   META_ACCESS_TOKEN   — System User-token met ads_read (Business Manager)
 //   META_AD_ACCOUNT_ID  — advertentieaccount-id, met of zonder 'act_'-prefix
+//   CRON_SECRET         — machine-sleutel waarmee pg_cron dagelijks mag syncen
 // Elke ingelogde teamgebruiker mag syncen; de token blijft server-side.
+// Dagelijkse sync: pg_cron → net.http_post met header x-cron-key = CRON_SECRET.
 import { createClient } from "jsr:@supabase/supabase-js@2";
 
 const GRAPH = "https://graph.facebook.com/v21.0";
@@ -23,14 +25,18 @@ const json = (obj: unknown, status = 200) =>
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: cors });
   try {
-    // ── alleen ingelogde teamleden ──
-    const authClient = createClient(
-      Deno.env.get("SUPABASE_URL")!,
-      Deno.env.get("SUPABASE_ANON_KEY")!,
-      { global: { headers: { Authorization: req.headers.get("Authorization") ?? "" } } },
-    );
-    const { data: { user } } = await authClient.auth.getUser();
-    if (!user) return json({ error: "geen toegang — log in" }, 403);
+    // ── toegang: ingelogd teamlid ÓF de dagelijkse cron met machine-sleutel ──
+    const cronSecret = Deno.env.get("CRON_SECRET");
+    const isCron = !!cronSecret && req.headers.get("x-cron-key") === cronSecret;
+    if (!isCron) {
+      const authClient = createClient(
+        Deno.env.get("SUPABASE_URL")!,
+        Deno.env.get("SUPABASE_ANON_KEY")!,
+        { global: { headers: { Authorization: req.headers.get("Authorization") ?? "" } } },
+      );
+      const { data: { user } } = await authClient.auth.getUser();
+      if (!user) return json({ error: "geen toegang — log in" }, 403);
+    }
 
     const token = Deno.env.get("META_ACCESS_TOKEN");
     let account = Deno.env.get("META_AD_ACCOUNT_ID") ?? "";
