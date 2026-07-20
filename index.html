@@ -361,6 +361,7 @@ async function initApp(user) {
   await loadFromDB();
   refreshKanaalUI(); render();
   setupRealtime();
+  metaAutoSync();
 }
 function showLogin() {
   _appShowing = false; currentUser = null; currentProfile = null;
@@ -721,8 +722,39 @@ function metaStatsHtml(){
       <td class="rr">${a.leads?'€'+cpl.toFixed(2):'—'}</td></tr>`;
   }).join('');
   const laatst = state.meta[0]?.synced_at ? state.meta[0].synced_at.slice(0,16).replace('T',' ') : '';
+  // Keten-koppeling: totale ad-uitgaven vs kandidaten/plaatsingen met bron Meta (30 dgn)
+  const spend = Object.values(agg).reduce((s,a)=>s+a.uitgegeven,0);
+  const candsM = state.cands.filter(c=>c.bron==='Meta' && (c.since||'')>=cut).length;
+  const plM = state.cands.filter(c=>c.bron==='Meta' && (c.geplaatst_op||'')>=cut && (PLACED_FASES.includes(c.fase)||c.fase==='Gestopt')).length;
+  const keten = spend>0 ? `<div class="ketenzin">💶 €${spend.toFixed(0)} uitgegeven (30 dgn) → ${candsM} Meta-kandidaten op het bord${candsM?` = <b>€${(spend/candsM).toFixed(0)} per kandidaat</b>`:''}${plM?` → ${plM} plaatsing${plM>1?'en':''} = <b>€${(spend/plM).toFixed(0)} per plaatsing</b>`:''}</div>` : '';
   return `<div style="overflow-x:auto"><table class="itable metatable"><tr><th>Campagne / advertentie</th><th class="rr">Uitgegeven</th><th class="rr">Impressies</th><th class="rr">Kliks</th><th class="rr">CPC</th><th class="rr">CTR</th><th class="rr">Leads</th><th class="rr">€/lead</th></tr>${rows}</table></div>
+  ${keten}
   <div class="syncnote">Laatste sync: ${laatst||'onbekend'} · 30 dagen · richtlijn NL: Meta-CPC voor vacatureverkeer ± €0,30-0,40</div>`;
+}
+// ─── META-SYNC (Edge Function, token server-side) ───────────────
+let _metaSyncing = false;
+async function metaSync(handmatig){
+  if (_metaSyncing) return;
+  _metaSyncing = true;
+  if (handmatig) toast('📡 Meta-cijfers ophalen…');
+  try {
+    const { data, error } = await sb.functions.invoke('meta-sync');
+    if (error || data?.error) {
+      const msg = data?.error || error?.message || 'sync mislukt';
+      if (handmatig) toast(/secret|ingesteld/i.test(msg) ? 'Meta-koppeling nog niet geactiveerd (secrets ontbreken)' : '⚠ '+msg);
+      console.warn('meta-sync', msg);
+    } else {
+      await loadFromDB(); render();
+      if (handmatig) toast(`✓ Meta gesynct — ${data.regels} regels`);
+    }
+  } catch(e) { console.warn('meta-sync', e); if (handmatig) toast('⚠ Meta-sync niet bereikbaar'); }
+  _metaSyncing = false;
+}
+function metaAutoSync(){
+  // Alleen als de koppeling ooit data gaf en die ouder is dan 6 uur
+  if (!state.meta || !state.meta.length) return;
+  const laatst = state.meta[0]?.synced_at || '';
+  if (!laatst || (Date.now() - new Date(laatst).getTime()) > 6*3600e3) metaSync(false);
 }
 
 function renderPrestatie(){
@@ -758,7 +790,7 @@ function renderPrestatie(){
 
   el.innerHTML = `
   <div class="inzgrid">
-    <div class="inzbox" style="grid-column:1/-1"><h4>📡 Live advertenties (Meta)</h4>${metaStatsHtml()}</div>
+    <div class="inzbox" style="grid-column:1/-1"><h4 style="display:flex;justify-content:space-between;align-items:center">📡 Live advertenties (Meta) <button class="qbtn" id="metasyncbtn">↻ Sync nu</button></h4>${metaStatsHtml()}</div>
     <div class="inzbox" style="grid-column:1/-1"><h4>📈 Organisch deze maand</h4>
       <div class="split" style="margin-top:2px"><span><b style="font-size:22px">${pubM.length}</b> gepubliceerd</span><span><b style="font-size:22px">${som('bereik').toLocaleString('nl-NL')}</b> bereik</span><span><b style="font-size:22px">${som('leads')}</b> leads</span></div>
     </div>
@@ -782,6 +814,7 @@ function renderPrestatie(){
   </div>`;
 
   el.querySelectorAll('[data-open]').forEach(u=>u.onclick=()=>openEdit(u.dataset.open));
+  el.querySelector('#metasyncbtn').onclick = () => metaSync(true);
 }
 
 // ─── VIEW 2: CONTENT CREATIE ────────────────────────────────────
