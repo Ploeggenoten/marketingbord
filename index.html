@@ -56,6 +56,12 @@ select,input,button,textarea{font-family:var(--body);font-size:13px}
 .tag{font-size:10.5px;font-weight:600;padding:2px 8px;border-radius:999px;border:1px solid #cdd5bd;background:#f1f4ea;color:#4a5540}
 .tag.kan{color:#fff;border:none;background:var(--kan)}
 .tag.doel{background:#eef1e7;color:#5b6544}
+.tag.warn2{background:#faedd6;border-color:#e6c896;color:#8a5a1a;cursor:help}
+.chkrow{display:flex;flex-direction:column;gap:4px;background:#f4f6ee;border:1px solid var(--line);border-radius:9px;padding:9px 11px}
+.chkrow .ci2{font-size:12px;display:flex;gap:7px;align-items:baseline}
+.chkrow .ci2 b{font-weight:600}
+.chkrow .ci2 small{color:var(--muted)}
+.chkrow .ok{color:#1e6b3f}.chkrow .nee{color:#a86a1a}
 .card .when{margin-top:7px;font-weight:600;font-size:13px;font-variant-numeric:tabular-nums;color:#26331a;background:#eef2e0;border:1px solid #bcc9a0;border-radius:8px;padding:3px 9px;display:inline-flex;gap:6px;align-items:center}
 .card .when.vandaag{background:#2f8f5b;color:#fff;border-color:#2f8f5b}
 .card .when.soon{background:#fbe6d2;border-color:#e0b076;color:#8a521a}
@@ -233,6 +239,7 @@ textarea{resize:vertical}
     <label class="fl">Campagne (optioneel, voor Meta-koppeling later)<input id="f_campagne" placeholder="bijv. Operators Q3"></label>
     <label class="fl">Hook / eerste zin<input id="f_hook" placeholder="De eerste 2 seconden…"></label>
     <label class="fl">Script / caption<textarea id="f_script" placeholder="Volledig script of caption — klaar om te kopiëren bij publicatie"></textarea></label>
+    <div class="chkrow" id="f_checklist"></div>
     <div style="display:flex;gap:10px">
       <label class="fl" style="flex:1">Publicatiedatum<input type="date" id="f_datum"></label>
       <label class="fl" style="flex:1">Tijd<input type="time" id="f_tijd"></label>
@@ -243,6 +250,11 @@ textarea{resize:vertical}
       <button class="btn ghost" id="f_utmgen" type="button" style="padding:9px 12px">🔗 Maak</button>
     </div>
     <div class="utmout" id="f_utmout"></div>
+    <div class="utmrow">
+      <label class="fl">WhatsApp-nummer voor "app ons"-CTA<input id="f_wanr" placeholder="316xxxxxxxx"></label>
+      <button class="btn ghost" id="f_wagen" type="button" style="padding:9px 12px">💬 Maak</button>
+    </div>
+    <div class="utmout" id="f_waout"></div>
     <div class="sectt">Na publicatie</div>
     <label class="fl">Link naar post<input id="f_link" placeholder="https://…"></label>
     <div class="resgrid">
@@ -523,6 +535,8 @@ function cardHtml(p){
       ${p.campagne?`<span class="tag doel">🎯 ${esc(p.campagne)}</span>`:''}
       ${p.vacature?`<span class="tag doel" title="${esc(p.vacature)}">📌 ${esc(p.vacature.length>24?p.vacature.slice(0,24)+'…':p.vacature)}</span>`:''}
       ${p.notities.length?`<span class="tag">🗒 ${p.notities.length}</span>`:''}
+      ${kanaalCoach(p)?`<span class="tag warn2" title="${esc(kanaalCoach(p))}">⚠ kanaal</span>`:''}
+      ${baitCheck(p)?`<span class="tag warn2" title="Meta demoteert engagement-bait: ${esc(baitCheck(p))}. Meningsvragen mogen wél.">⚠ bait</span>`:''}
     </div>
     ${when}${script}${res}${learn}
     <button class="movebtn" data-move="${p.id}">↔ Verplaatsen…</button>
@@ -596,6 +610,40 @@ function renderCal(){
   wrap.querySelectorAll('.calcell').forEach(cell=>{
     cell.onclick = () => openEdit(null, { datum: cell.dataset.dag, fase:'Ingepland' });
   });
+}
+
+// ─── KANAAL-COACH & BAIT-CHECKER (onderzoek 20 jul 2026) ────────
+// Geverifieerd: LinkedIn = klant/B2B-kanaal (8% blue-collar gebruik, Intelligence Group);
+// Meta/TikTok = kandidaat-kanalen (kliks 20-25x goedkoper, MrWork NL 2024).
+function kanaalCoach(p){
+  if (p.kanaal==='LinkedIn' && p.doel==='Kandidaten werven')
+    return 'LinkedIn bereikt maar 8% van blue-collar werkzoekenden — zet deze post op Facebook/Instagram/TikTok, of wijzig het doel naar Klanten / leadgen';
+  if ((p.kanaal==='TikTok') && p.doel==='Klanten / leadgen')
+    return 'TikTok is een kandidaat-kanaal — klantcases en B2B horen op LinkedIn';
+  return null;
+}
+// Meta demoteert engagement-bait (likes/tags/shares vragen om bereik); meningsvragen mogen wél.
+const BAIT_RE = [
+  [/tag (iemand|een vriend|je maat|iemand die)/i,'“tag iemand …”'],
+  [/like (als|deze post|dit bericht)/i,'“like als …”'],
+  [/deel (dit|deze) (bericht|post|video)/i,'“deel dit …”'],
+  [/reageer met (een|ja|nee|emoji|\p{Emoji})/iu,'“reageer met …”'],
+  [/volg (ons|mij|onze pagina) (en|voor)/i,'“volg ons en …”'],
+];
+function baitCheck(p){
+  const txt = (p.hook||'')+' '+(p.script||'');
+  const hit = BAIT_RE.find(([re])=>re.test(txt));
+  return hit ? hit[1] : null;
+}
+// Post-checklist: geverifieerde succesfactoren voor blue-collar content
+function postChecklist(p){
+  const txt = (p.hook||'')+' '+(p.script||'');
+  return [
+    { ok:/€|\b(salaris|verdien|bruto|toeslag|\d{3,4}([.,]\d{2,3})?( bruto| per maand| p\/m))\b/i.test(txt), lbl:'Salaris/€ zichtbaar', why:'vaak doorslaggevend voor blue-collar' },
+    { ok:/reel|video/i.test(p.format||''), lbl:'Video-format', why:'video verhoogt sollicitaties aantoonbaar' },
+    { ok:/wa\.me|whatsapp|utm_/i.test(txt+' '+(p.utm||'')), lbl:'Lage-drempel CTA (WhatsApp/link)', why:'cv-loos solliciteren: 60-80% respons via WhatsApp' },
+    { ok:(p.hook||'').length>0 && (p.hook||'').split(/\s+/).length<=12, lbl:'Korte hook (≤12 woorden)', why:'kort en mobile-first werkt' },
+  ];
 }
 
 // ─── INZICHTEN-ENGINE ───────────────────────────────────────────
@@ -719,6 +767,13 @@ function renderInzichten(){
         : `<div class="toel">Nog te weinig resultaat-data (${pubs.length} posts met bereik). Vul na elke publicatie bereik/likes/leads in — vanaf ±4 posts verschijnen hier patronen: beste format, beste kanaal, beste dag en of cijfer-hooks voor jou werken.</div>`}
       ${nag.length ? `<div class="advies warn"><b>📊 ${nag.length} gepubliceerde post${nag.length>1?'s':''} zonder resultaten</b>Cijfers invullen duurt 1 minuut en voedt alle analyses hierboven. ${nag.slice(0,3).map(p=>`<u style="cursor:pointer" data-open="${p.id}">${esc(p.titel)}</u>`).join(' · ')}${nag.length>3?' · …':''}</div>`:''}
     </div>
+    <div class="inzbox"><h4>📖 Speelboek — wat het onderzoek zegt (20 jul 2026)</h4>
+      <div class="advies"><b>📣 Kanaalrollen: Meta/TikTok = kandidaten, LinkedIn = klanten</b>Maar 8% van blue-collar werkzoekenden zit op LinkedIn; kliks op Meta zijn 20–25× goedkoper (NL-data). Facebook is het lokale wervingskanaal (30+), TikTok voor jong instroomwerk. LinkedIn is voor klantcases en B2B.<br><small>Intelligence Group · MrWork NL 2024</small></div>
+      <div class="advies"><b>💶 Salaris zichtbaar + cv-loos solliciteren wint</b>Kort, video, mobile-first, salaris expliciet, en solliciteren zonder cv of brief — het liefst via WhatsApp (60–80% respons vs 15–30% bij bellen). Gebruik de 💬 WhatsApp-CTA in het postpaneel.<br><small>Intelligence Group, Stand van Werven 2025</small></div>
+      <div class="advies warn"><b>🚫 Geen "tag iemand die een baan zoekt"</b>Meta demoteert engagement-bait (posts én bij herhaling je hele pagina). Een oprechte meningsvraag ("wat vind jij van nachtdiensten?") mag wél — de app checkt je scripts hierop.<br><small>Meta Content Distribution Guidelines</small></div>
+      <div class="advies"><b>🕐 "Beste posttijd" is een mythe — eigen data wint</b>Instagram-chef Mosseri: tijdstip heeft geen directe invloed op ranking; kwaliteit wél. Daarom leert dit bord van je éigen resultaten (zie "Wat werkt") in plaats van generieke tijdstippen.<br><small>Mosseri 2025/2026 · Buffer 9,6M-posts-analyse</small></div>
+      <div class="advies"><b>⛓ Jullie unieke wapen: de gesloten keten</b>Bron-attributie is hét onopgeloste probleem in recruitment-marketing (last-click meet alleen "eigen website"). Dit bord meet content → kandidaat → plaatsing → fee via het pijplijnbord — wat de markt niet kan.<br><small>Stand van Werven 2025 · Rally</small></div>
+    </div>
     <div class="inzbox"><h4>📡 Vacature-contentradar</h4>
       <div class="toel">Open vacatures van het pijplijnbord zonder content in de afgelopen 14 dagen én zonder iets in de pijplijn. Oudste eerst — daar knelt het.</div>
       ${radar.length ? radar.slice(0,8).map(x=>`<div class="gapviz"><div class="gv"><b>${esc(x.key)}</b><small>${x.dgnOpen!=null?x.dgnOpen+' dgn open · ':''}${x.nContent} post${x.nContent===1?'':'s'} ooit</small></div><button class="gapbtn" data-vacpost="${esc(x.key)}">→ maak post</button></div>`).join('')
@@ -799,6 +854,9 @@ function openEdit(id, preset={}){
   v('f_utmbase', localStorage.getItem('mkt_utmbase') || '');
   const uo = document.getElementById('f_utmout');
   uo.textContent = p?.utm || ''; uo.style.display = p?.utm ? 'block' : 'none';
+  v('f_wanr', localStorage.getItem('mkt_wanr') || '');
+  const wo = document.getElementById('f_waout'); wo.textContent=''; wo.style.display='none';
+  updateChecklist();
   v('f_datum', preset.datum ?? p?.datum ?? ''); v('f_tijd', p?.tijd?.slice(0,5));
   v('f_link', p?.link);
   const r = p?.resultaat || {};
@@ -813,6 +871,39 @@ function openEdit(id, preset={}){
 function closeEdit(){ document.getElementById('scrim').classList.remove('open'); editId = null; }
 document.getElementById('f_cancel').onclick = closeEdit;
 document.getElementById('scrim').onclick = e => { if (e.target.id==='scrim') closeEdit(); };
+
+// Live checklist (geverifieerde succesfactoren) in het paneel
+function updateChecklist(){
+  const p = {
+    hook: document.getElementById('f_hook').value,
+    script: document.getElementById('f_script').value,
+    format: document.getElementById('f_format').value,
+    utm: document.getElementById('f_utmout').textContent,
+  };
+  const items = postChecklist(p);
+  const coach = kanaalCoach({kanaal:document.getElementById('f_kanaal').value, doel:document.getElementById('f_doel').value});
+  const bait = baitCheck(p);
+  document.getElementById('f_checklist').innerHTML =
+    items.map(i=>`<div class="ci2 ${i.ok?'ok':'nee'}">${i.ok?'✓':'○'} <b>${i.lbl}</b> <small>— ${i.why}</small></div>`).join('')
+    + (coach?`<div class="ci2 nee">⚠ <b>Kanaal-check</b> <small>— ${esc(coach)}</small></div>`:'')
+    + (bait?`<div class="ci2 nee">⚠ <b>Engagement-bait</b> <small>— Meta demoteert ${esc(bait)}; een oprechte meningsvraag mag wél</small></div>`:'');
+}
+['f_hook','f_script','f_format','f_kanaal','f_doel'].forEach(id=>{
+  document.getElementById(id).addEventListener('input', updateChecklist);
+  document.getElementById(id).addEventListener('change', updateChecklist);
+});
+
+document.getElementById('f_wagen').onclick = () => {
+  let nr = document.getElementById('f_wanr').value.replace(/[^0-9]/g,'');
+  if (!nr) { toast('Vul een WhatsApp-nummer in (bijv. 316…)'); return; }
+  if (nr.startsWith('06')) nr = '31'+nr.slice(1);
+  localStorage.setItem('mkt_wanr', nr);
+  const onderwerp = document.getElementById('f_vacature').value || document.getElementById('f_titel').value || 'de vacature';
+  const link = `https://wa.me/${nr}?text=${encodeURIComponent('Hoi! Ik zag jullie post en wil meer weten over '+onderwerp)}`;
+  const wo = document.getElementById('f_waout');
+  wo.textContent = link; wo.style.display = 'block';
+  navigator.clipboard.writeText(link).then(()=>toast('💬 WhatsApp-link gemaakt en gekopieerd — cv-loos solliciteren'));
+};
 
 document.getElementById('f_copy').onclick = () => {
   const s = document.getElementById('f_script').value;
@@ -933,19 +1024,24 @@ document.getElementById('f_utmgen').onclick = () => {
 
 // ─── IDEEËNBANK / INSPIRATIE ────────────────────────────────────
 // Bewezen blue-collar contentformats; {K}=klant, {F}=functie — bij koppeling aan vacature ingevuld
+// Onderbouwd door onderzoek 20 jul 2026: salaris expliciet, video, kort, WhatsApp-solliciteren,
+// meningsvragen (mag van Meta), meertalig, LinkedIn alléén voor klanten/B2B.
 const IDEEENBANK = [
   {t:'Dag uit het leven: {F}', f:'Reel / video', d:'Kandidaten werven', h:'04:45. De wekker gaat. Dit is mijn dag als {F}.'},
   {t:'Salaris-transparantie: wat verdien je écht als {F}?', f:'Reel / video', d:'Kandidaten werven', h:'€X.XXX bruto + XX% toeslag. Zwart op wit.'},
-  {t:'Van sollicitatie tot eerste werkdag in 7 dagen', f:'Carousel', d:'Kandidaten werven', h:'Maandag gebeld, volgende week maandag gestart.'},
-  {t:'Mythe kapot: "productiewerk is voor mensen zonder opties"', f:'Reel / video', d:'Employer branding', h:'Dit vooroordeel kost jou een goede baan.'},
+  {t:'Solliciteren zonder cv — app ons gewoon', f:'Foto + tekst', d:'Kandidaten werven', h:'Geen cv? Geen brief? Eén appje is genoeg.'},
+  {t:'Meningsvraag: nachtdienst of dagdienst?', f:'Tekstpost', d:'Employer branding', h:'Wat vind jij: nachtdienst met toeslag of gewoon overdag?'},
+  {t:'Van sollicitatie tot eerste werkdag in 7 dagen', f:'Carousel', d:'Kandidaten werven', h:'Maandag geappt, volgende week maandag gestart.'},
+  {t:'Mythe kapot: "uitzendwerk betaalt slecht"', f:'Reel / video', d:'Employer branding', h:'"Uitzendbureaus pakken de helft van je loon." Echt?'},
   {t:'De machine die niemand mag aanraken (behalve jij)', f:'Reel / video', d:'Kandidaten werven', h:'Deze machine is €2 miljoen waard. Jij bedient hem.'},
-  {t:'Ploegendienst-calculator: dit levert de nachtploeg extra op', f:'Carousel', d:'Kandidaten werven', h:'Nachtdienst = +XX%. Reken maar mee.'},
+  {t:'Ploegentoeslag-rekensom: dit levert de nachtploeg op', f:'Carousel', d:'Kandidaten werven', h:'Nachtdienst = +25%. Reken maar mee: €___ extra p/m.'},
   {t:'Eerste week van {naam nieuwe kracht} bij {K}', f:'Foto + tekst', d:'Employer branding', h:'Week 1 zit erop. Dit vond hij ervan.'},
-  {t:'Recruiter reageert op werkvloer-fabels', f:'Reel / video', d:'Employer branding', h:'"Uitzendbureaus pakken de helft van je loon." Echt?'},
+  {t:'Praca w Holandii — post in het Pools', f:'Foto + tekst', d:'Kandidaten werven', h:'Szukamy operatorów. Dobra stawka, praca od zaraz.'},
   {t:'POV: je eerste meeloopdag bij {K}', f:'Story', d:'Kandidaten werven', h:'Kom mee, we lopen samen een dagje mee.'},
   {t:'Waarom {naam} na 3 maanden een contract tekende', f:'Foto + tekst', d:'Kandidaten werven', h:'Van flexkracht naar vast. Zo ging dat.'},
+  {t:'Klantcase voor LinkedIn: ploeg compleet bij {K}', f:'Foto + tekst', d:'Klanten / leadgen', h:'6 weken, 4 operators, 0 no-shows. Zo bouwden we de ploeg bij {K}.'},
+  {t:'Achter de schermen: zo ziet de werkvloer er écht uit', f:'Story', d:'Employer branding', h:'Geen stockfoto\'s. Dit is het echt.'},
   {t:'5 vragen die jij mag stellen in je sollicitatiegesprek', f:'Carousel', d:'Kandidaten werven', h:'Een gesprek is tweerichtingsverkeer.'},
-  {t:'Achter de schermen: zo ziet de kantine/werkvloer eruit', f:'Story', d:'Employer branding', h:'Geen stockfoto\'s. Dit is het echt.'},
 ];
 let _ideeSet = [];
 function rollIdeeen(){
