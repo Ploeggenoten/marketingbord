@@ -190,6 +190,41 @@ textarea{resize:vertical}
 .phopt.cur{background:#e4f1e9;border-color:#a8d0b6}
 #toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%) translateY(20px);background:#fff;color:#20260f;border:1px solid var(--line);box-shadow:0 8px 28px rgba(0,0,0,.22);padding:10px 20px;border-radius:99px;font-size:13.5px;font-weight:600;opacity:0;transition:opacity .2s,transform .2s;pointer-events:none;z-index:99;max-width:86vw;text-align:center}
 #toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+/* ── MOBIEL (Bryan werkt vanaf zijn telefoon) ── */
+nav.fases{position:sticky;top:0;z-index:4}
+@media(max-width:640px){
+  header.top{padding:8px 10px;gap:6px}
+  .brand span{display:none}
+  .tools{gap:6px;width:100%}
+  #search{flex:1 1 110px;min-width:110px;width:auto!important}
+  .btn{font-size:12.5px;padding:7px 10px}
+  .field{font-size:16px;padding:7px 9px}
+  .navtab{font-size:13px;padding:10px 12px 8px;gap:5px}
+  .navtab .nbadge{font-size:10px;padding:1px 6px}
+  .viewwrap{padding:10px 8px 30px;gap:9px}
+  .inzbox{padding:11px 12px}
+  .inzgrid{gap:9px}
+  .itable{font-size:12px}
+  .itable th,.itable td{padding:5px 4px}
+  .calhead{flex-wrap:wrap;gap:6px;padding:9px 10px}
+  .calhead h3{min-width:0;font-size:14px;flex:1}
+  .calhead span{display:none}
+  .calcell{min-height:52px;padding:3px 4px}
+  .calcell .dn{font-size:10.5px}
+  .calpost{font-size:0;line-height:0;width:9px;height:9px;padding:0;border-radius:50%;display:inline-block;margin:2px 2px 0 0}
+  .panel{width:100vw;max-width:100vw}
+  label.fl select,label.fl input,label.fl textarea{font-size:16px}
+  .bigbtn{flex:1 1 auto;justify-content:center;padding:11px 10px;font-size:13.5px}
+  .cre-actions{gap:6px}
+  .wcell{min-width:66px;padding:5px 7px}
+  .wcell .n{font-size:17px}
+  .planrow{font-size:12.5px;gap:7px}
+  .planrow .pd{min-width:74px}
+  .postgrid{grid-template-columns:1fr 1fr;gap:7px}
+  .card{padding:8px 9px}
+  .card .nm{font-size:13px}
+}
+@media(max-width:420px){ .postgrid{grid-template-columns:1fr} }
 /* ── LOGIN ── */
 #loginscreen{position:fixed;inset:0;background:var(--ink);display:flex;align-items:center;justify-content:center;z-index:100}
 .logbox{background:#141a0b;border:1px solid #2a3618;border-radius:16px;padding:36px 32px;width:340px;max-width:92vw;display:flex;flex-direction:column;gap:18px}
