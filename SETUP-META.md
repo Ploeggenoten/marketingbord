@@ -29,7 +29,9 @@ De Edge Function `meta-sync` is al gedeployed en de app is er klaar voor. Er ont
    - `META_AD_ACCOUNT_ID` = het cijfer-ID uit stap 1 (met of zonder `act_` maakt niet uit)
 
 ## Stap 5 — Testen
-Open het [marketingbord](https://ploeggenoten.github.io/marketingbord/) → tab **📊 Prestatie** → knop **↻ Sync nu**. Binnen een paar seconden staan de laatste 30 dagen aan campagnecijfers (CPC, CTR, leads, €/lead) in de tabel. Daarna ververst het elke 6 uur vanzelf zodra iemand de app opent.
+Open het [marketingbord](https://ploeggenoten.github.io/marketingbord/) → tab **📊 Prestatie** → knop **↻ Sync nu**. Binnen een paar seconden staan de laatste 30 dagen aan campagnecijfers (CPC, CTR, leads, €/lead) in de tabel, plus een per-dag-overzicht.
+
+**Dagelijkse sync staat al klaar:** pg_cron draait de sync elke dag om 07:30 en 13:30 (NL-tijd) server-side — ook als niemand de app opent. Zodra de secrets uit stap 4 erin staan, beginnen die runs automatisch data op te halen; er hoeft verder niets aangezet te worden.
 
 ### Opmerkingen
 - De token blijft **alleen server-side** in de Edge Function (zelfde patroon als de Yuki-sleutel); de app leest alleen de tabel `mkt_meta_stats`.
