@@ -9,7 +9,38 @@
 :root{--ink:#141a0b;--txt:#20260f;--steel:#3d6400;--glove:#6fa03c;--glove-ink:#ffffff;--paper:#eceee4;--col:#fbfcf8;--card:#ffffff;--line:#d7ddc8;--muted:#697256;--green:#2f8f5b;--red:#c0392b;--amber:#a86a1a;--disp:'Anton','Inter',system-ui,sans-serif;--body:'Inter',system-ui,sans-serif}
 *{box-sizing:border-box}html,body{margin:0;height:100%;background:url('board-bg.jpg') center/cover fixed no-repeat, var(--paper)}
 body{color:var(--txt);font-family:var(--body);-webkit-font-smoothing:antialiased}
-header.top{background:#20301a;color:#f6f7f1;border-bottom:1px solid #33421f;padding:11px 18px;display:flex;align-items:center;gap:9px;flex-wrap:wrap}
+header.top{background:#20301a;color:#f6f7f1;padding:11px 18px;display:flex;align-items:center;gap:9px;flex-wrap:wrap}
+/* ── NAV-TABS (3 fases) ── */
+nav.fases{background:#20301a;border-bottom:1px solid #33421f;padding:0 18px;display:flex;gap:4px;overflow-x:auto}
+.navtab{background:transparent;border:none;border-bottom:4px solid transparent;color:#9aa781;font-family:var(--disp);font-size:15px;letter-spacing:.06em;text-transform:uppercase;padding:12px 18px 10px;cursor:pointer;white-space:nowrap;display:flex;gap:8px;align-items:center}
+.navtab:hover{color:#d3ecab}
+.navtab.on{color:#c8f135;border-bottom-color:#c8f135}
+.navtab .nbadge{font-family:var(--body);font-size:11px;font-weight:700;background:#3e4f2a;color:#d3ecab;border-radius:999px;padding:1px 8px}
+.navtab.on .nbadge{background:#c8f135;color:#171d08}
+.viewwrap{padding:16px 18px 40px;display:none;flex-direction:column;gap:12px}
+/* ── CREATIE ── */
+.cregrid{display:grid;grid-template-columns:minmax(240px,300px) 1fr;gap:12px;align-items:start}
+@media(max-width:860px){.cregrid{grid-template-columns:1fr}}
+.postgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:10px}
+.cre-actions{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:2px}
+.bigbtn{background:var(--glove);color:#fff;border:none;border-radius:10px;padding:12px 16px;font-weight:600;font-size:14px;cursor:pointer;display:flex;gap:8px;align-items:center}
+.bigbtn.sec{background:#fff;color:#2a3618;border:1px solid var(--line)}
+.bigbtn:hover{filter:brightness(1.04)}
+.fasechip{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;padding:2px 8px;border-radius:999px;color:#fff;background:var(--fc,#9aa3b2)}
+.qbtn{border:1px solid var(--line);background:#f4f6ee;color:#2a3618;border-radius:7px;font-size:11.5px;font-weight:600;padding:4px 9px;cursor:pointer}
+.qbtn:hover{background:#e9eddc}
+/* ── PRESTATIE ── */
+.metatable td,.metatable th{white-space:nowrap}
+.activatie{border:2px dashed #c4d09a;border-radius:12px;padding:18px;text-align:center;color:var(--muted);font-size:13.5px;line-height:1.6;background:#fbfcf5}
+.activatie b{color:var(--txt)}
+.syncnote{font-size:11px;color:var(--muted);margin-top:6px}
+/* ── PLANNING ── */
+.planrow{display:flex;align-items:center;gap:10px;padding:8px 4px;border-bottom:1px solid #e8ebdd;font-size:13.5px}
+.planrow:last-child{border-bottom:none}
+.planrow .pd{font-variant-numeric:tabular-nums;font-weight:600;min-width:96px}
+.planrow .pt{flex:1;font-weight:600}
+.planrow.gemist .pd{color:var(--red)}
+.aibtns{display:flex;gap:6px;flex-wrap:wrap}
 .brand{display:flex;align-items:center;gap:9px}
 .brand span{font-size:12px;color:#9aa781}
 .spacer{flex:1}.tools{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
@@ -183,43 +214,27 @@ textarea{resize:vertical}
   </div>
 </div>
 
-<!-- PHASE PICKER (mobiel) -->
-<div id="phasescrim" class="scrim"><div class="panel" id="phasepanel">
-  <h2 id="phasetitle" style="font-size:14px">Verplaatsen naar…</h2>
-  <div id="phaselist"></div>
-</div></div>
-
 <!-- APP -->
 <div id="app" style="display:none">
 <header class="top">
-  <div class="brand"><img src="logo-lime.png" alt="Ploeggenoten" style="height:20px;display:block"><span>Marketingbord</span></div>
+  <div class="brand"><img src="logo-lime.png" alt="Ploeggenoten" style="height:20px;display:block"><span>Marketing</span></div>
   <div class="spacer"></div>
   <div class="tools">
     <input class="field" id="search" placeholder="Zoek titel/script…" style="width:150px">
     <select class="field" id="kfilter"><option value="*">Alle kanalen</option></select>
-    <button class="btn ghost on" id="viewbord">▦ Bord</button>
-    <button class="btn ghost" id="viewcal">🗓 Kalender</button>
-    <button class="btn ghost" id="viewinz">💡 Inzichten</button>
-    <button class="btn ghost" id="inspiratie">🎲 Inspiratie</button>
-    <button class="btn" id="add">+ Idee / post</button>
     <button class="btn ghost" id="manage">⚙ Kanalen</button>
     <span id="userinfo" style="font-size:11px;color:#9aa781;white-space:nowrap"></span>
     <button class="btn ghost" id="logoutbtn">Uitloggen</button>
   </div>
 </header>
-<div class="dash" id="dash"></div>
-<div class="board" id="board"></div>
-<div id="calwrap"><div class="calbox">
-  <div class="calhead">
-    <h3 id="caltitle"></h3>
-    <button class="calnav" id="calprev">‹</button>
-    <button class="calnav" id="calvandaag">Vandaag</button>
-    <button class="calnav" id="calnext">›</button>
-    <span style="font-size:11.5px;color:var(--muted)">Klik op een dag om een post in te plannen · klik op een post om te bewerken</span>
-  </div>
-  <div class="calgrid" id="calgrid"></div>
-</div></div>
-<div id="inzwrap"></div>
+<nav class="fases">
+  <button class="navtab" data-view="prestatie">📊 Prestatie</button>
+  <button class="navtab" data-view="creatie">✍️ Content Creatie <span class="nbadge" id="nb_cre"></span></button>
+  <button class="navtab" data-view="planning">🗓 Planning <span class="nbadge" id="nb_plan"></span></button>
+</nav>
+<div class="viewwrap" id="prestatie"></div>
+<div class="viewwrap" id="creatie"></div>
+<div class="viewwrap" id="planning"></div>
 </div>
 
 <!-- POST PANEL -->
@@ -240,6 +255,11 @@ textarea{resize:vertical}
     <label class="fl">Hook / eerste zin<input id="f_hook" placeholder="De eerste 2 seconden…"></label>
     <label class="fl">Script / caption<textarea id="f_script" placeholder="Volledig script of caption — klaar om te kopiëren bij publicatie"></textarea></label>
     <div class="chkrow" id="f_checklist"></div>
+    <div class="aibtns">
+      <button class="btn ghost" type="button" id="f_vidtpl">🎬 Videoscript-template</button>
+      <button class="btn ghost" type="button" id="f_aiscript">🤖 AI-scriptprompt</button>
+      <button class="btn ghost" type="button" id="f_aibeeld">🎨 AI-beeldprompt</button>
+    </div>
     <div style="display:flex;gap:10px">
       <label class="fl" style="flex:1">Publicatiedatum<input type="date" id="f_datum"></label>
       <label class="fl" style="flex:1">Tijd<input type="time" id="f_tijd"></label>
@@ -370,8 +390,10 @@ const FASES = [
   {k:'Gepubliceerd',  c:'#3d9968'},
   {k:'Learnings',     c:'#4a9d9d'},
 ];
-const state = { posts: [], kanalen: [], vacs: [], cands: [], fees: null };
-let view = localStorage.getItem('mkt_view') || 'bord';
+const state = { posts: [], kanalen: [], vacs: [], cands: [], fees: null, meta: null };
+const VIEWS = ['prestatie','creatie','planning'];
+let view = localStorage.getItem('mkt_view') || 'prestatie';
+if (!VIEWS.includes(view)) view = {bord:'creatie', kalender:'planning', inzichten:'prestatie'}[view] || 'prestatie';
 let calMaand = null; // 'YYYY-MM' van getoonde kalendermaand
 
 function todayISO(){ const d=new Date(); return d.toISOString().slice(0,10); }
@@ -421,6 +443,9 @@ async function loadFromDB(){
   // Fees (finance, RLS alleen Tjeerd — faalt stil voor de rest van het team)
   const fR = await sb.from('fin_placements').select('pipeline_candidate_id,fee_excl,concept');
   state.fees = fR.error ? null : (fR.data||[]);
+  // Live Meta-cijfers (gevuld door de fase 2-Edge Function; tabel kan nog leeg/afwezig zijn)
+  const mR = await sb.from('mkt_meta_stats').select('*').order('datum',{ascending:false}).limit(400);
+  state.meta = mR.error ? null : (mR.data||[]);
 }
 async function upsertPost(p){
   const row = { ...postToRow(p), updated_by: currentUser?.id, updated_at: new Date().toISOString() };
@@ -460,53 +485,7 @@ function refreshKanaalUI(){
     state.vacs.map(v=>{ const key=`${v.klant} — ${v.functie}`; return `<option value="${esc(key)}">${esc(key)}${v.type?' ('+esc(v.type)+')':''}</option>`; }).join('');
 }
 
-// ─── RENDER: DASH ───────────────────────────────────────────────
-function renderDash(){
-  const el = document.getElementById('dash');
-  const P = state.posts;
-  const today = todayISO();
-  const nIdee = P.filter(p=>p.fase==='Idee').length;
-  const nScript = P.filter(p=>p.fase==='Script klaar').length;
-  const gemist = P.filter(p=>p.fase==='Ingepland' && p.datum && p.datum < today);
-  const maand = today.slice(0,7);
-  const pubM = P.filter(p=>(p.fase==='Gepubliceerd'||p.fase==='Learnings') && (p.datum||'').startsWith(maand));
-  const som = key => pubM.reduce((s,p)=>s+(Number(p.resultaat?.[key])||0),0);
-
-  // komende 7 dagen
-  let wk = '';
-  for (let i=0;i<7;i++){
-    const d = new Date(); d.setDate(d.getDate()+i);
-    const iso = d.toISOString().slice(0,10);
-    const dag = ['zo','ma','di','wo','do','vr','za'][d.getDay()];
-    const items = P.filter(p=>p.datum===iso && (p.fase==='Ingepland'||p.fase==='Gepubliceerd'||p.fase==='Learnings'));
-    wk += `<div class="wcell${i===0?' today':''}"><div class="n">${items.length||'·'}</div><div class="l">${dag} ${fmtD(iso).slice(0,5)}</div>${items.slice(0,3).map(p=>`<div class="t"><span class="kdot" style="background:${kanaalKleur(p.kanaal)}"></span> ${esc(p.titel.slice(0,22))}</div>`).join('')}</div>`;
-  }
-
-  // kanaalverdeling laatste 30 dagen gepubliceerd
-  const d30 = new Date(); d30.setDate(d30.getDate()-30);
-  const iso30 = d30.toISOString().slice(0,10);
-  const pub30 = P.filter(p=>(p.fase==='Gepubliceerd'||p.fase==='Learnings') && p.datum >= iso30);
-  const perK = {};
-  pub30.forEach(p=>{ perK[p.kanaal||'—'] = (perK[p.kanaal||'—']||0)+1; });
-
-  const voorraadLaag = (nIdee + nScript) < 3;
-  el.innerHTML = `
-    <div class="panelbox pijp"><h4>Contentvoorraad</h4>
-      <div class="big">${nIdee + nScript}</div>
-      <div class="sub">${nIdee} idee${nIdee===1?'':'ën'} · ${nScript} script${nScript===1?'':'s'} klaar</div>
-      ${voorraadLaag ? '<div class="chip warn" style="margin-top:8px">⚠ voorraad laag — plan een brainstorm</div>' : ''}
-      ${gemist.length ? `<div class="chip alert" style="margin-top:8px">⏰ ${gemist.length} ingeplande post${gemist.length>1?'s':''} over datum</div>` : ''}
-      ${(()=>{const n=P.filter(p=>(p.fase==='Gepubliceerd'||p.fase==='Learnings') && p.datum && p.datum<=isoDaysAgo(3) && !(Number(p.resultaat?.bereik)>0)).length; return n?`<div class="chip warn" style="margin-top:8px;cursor:pointer" onclick="view='inzichten';localStorage.setItem('mkt_view',view);render()">📊 ${n}× resultaten invullen</div>`:'';})()}
-    </div>
-    <div class="panelbox wk"><h4>Komende 7 dagen</h4><div class="wgrid">${wk}</div></div>
-    <div class="panelbox mnd"><h4>Deze maand gepubliceerd</h4>
-      <div class="big">${pubM.length}</div>
-      <div class="split"><span><b>${som('bereik').toLocaleString('nl-NL')}</b> bereik</span><span><b>${som('leads')}</b> leads</span></div>
-      <div style="margin-top:8px">${Object.entries(perK).map(([k,n])=>`<span class="chip"><span class="kdot" style="background:${kanaalKleur(k)}"></span>${esc(k)} <b>${n}</b></span>`).join('') || '<span class="sub">Nog niets gepubliceerd (30 dgn)</span>'}</div>
-    </div>`;
-}
-
-// ─── RENDER: BOARD ──────────────────────────────────────────────
+// ─── KAART (gedeeld door Creatie & Planning) ────────────────────
 function cardHtml(p){
   const today = todayISO();
   let when = '';
@@ -526,9 +505,11 @@ function cardHtml(p){
     ? `<div class="scriptrow"><span class="scripttag">📝 script</span><button class="copybtn" data-copy="${p.id}">kopieer</button></div>` : '';
   const learn = p.fase==='Learnings' && p.learnings
     ? `<div class="learn">💡 ${esc(p.learnings.slice(0,110))}${p.learnings.length>110?'…':''}</div>` : '';
-  return `<div class="card" draggable="true" data-id="${p.id}" style="--kan:${kanaalKleur(p.kanaal)}">
+  const fase = FASES.find(f=>f.k===p.fase);
+  return `<div class="card" data-id="${p.id}" style="--kan:${kanaalKleur(p.kanaal)};cursor:pointer">
     <div class="nm">${esc(p.titel)||'<i>zonder titel</i>'}</div>
     <div class="meta">
+      <span class="fasechip" style="--fc:${fase?.c||'#9aa3b2'}">${esc(p.fase)}</span>
       ${p.kanaal?`<span class="tag kan" style="--kan:${kanaalKleur(p.kanaal)}">${esc(p.kanaal)}</span>`:''}
       ${p.format?`<span class="tag">${esc(p.format)}</span>`:''}
       ${p.doel?`<span class="tag doel">${esc(p.doel)}</span>`:''}
@@ -539,46 +520,37 @@ function cardHtml(p){
       ${baitCheck(p)?`<span class="tag warn2" title="Meta demoteert engagement-bait: ${esc(baitCheck(p))}. Meningsvragen mogen wél.">⚠ bait</span>`:''}
     </div>
     ${when}${script}${res}${learn}
-    <button class="movebtn" data-move="${p.id}">↔ Verplaatsen…</button>
+    <div class="scriptrow">${quickBtns(p)}</div>
   </div>`;
 }
-function renderBoard(){
-  const el = document.getElementById('board');
-  const P = filtered();
-  el.innerHTML = FASES.map(f=>{
-    let items = P.filter(p=>p.fase===f.k);
-    if (f.k==='Ingepland') items.sort((a,b)=>(a.datum||'9999').localeCompare(b.datum||'9999'));
-    else if (f.k==='Gepubliceerd'||f.k==='Learnings') items.sort((a,b)=>(b.datum||'').localeCompare(a.datum||''));
-    else items.sort((a,b)=>(b._updatedAt||b.createdAt||'').localeCompare(a._updatedAt||a.createdAt||''));
-    return `<div class="colm" data-fase="${f.k}" style="--ph:${f.c}">
-      <div class="chead"><h3>${f.k}</h3><span class="count">${items.length}</span></div>
-      <div class="cbody">${items.map(cardHtml).join('')}</div>
-    </div>`;
-  }).join('');
-
-  // drag & drop
-  el.querySelectorAll('.card').forEach(c=>{
-    c.ondragstart = e => { e.dataTransfer.setData('text/plain', c.dataset.id); c.classList.add('drag'); };
-    c.ondragend = () => c.classList.remove('drag');
+function quickBtns(p){
+  if (p.fase==='Idee') return `<button class="qbtn" data-q="${p.id}|Script klaar">✍️ script schrijven</button>`;
+  if (p.fase==='Script klaar') return `<button class="qbtn" data-q="${p.id}|Ingepland">📅 inplannen</button>`;
+  if (p.fase==='Ingepland') return `<button class="qbtn" data-q="${p.id}|Gepubliceerd">✔ gepubliceerd</button>`;
+  if (p.fase==='Gepubliceerd') return `<button class="qbtn" data-q="${p.id}|Learnings">💡 learnings noteren</button>`;
+  return '';
+}
+function bindCards(root){
+  root.querySelectorAll('.card').forEach(c=>{
     c.onclick = e => {
       if (e.target.dataset.copy) { copyScript(e.target.dataset.copy); return; }
-      if (e.target.dataset.move) { openPhasePicker(e.target.dataset.move); return; }
+      if (e.target.dataset.q) { const [id,fase]=e.target.dataset.q.split('|'); quickFase(id,fase); return; }
       openEdit(c.dataset.id);
     };
   });
-  el.querySelectorAll('.colm').forEach(col=>{
-    col.ondragover = e => { e.preventDefault(); col.classList.add('drop'); };
-    col.ondragleave = () => col.classList.remove('drop');
-    col.ondrop = e => {
-      e.preventDefault(); col.classList.remove('drop');
-      move(e.dataTransfer.getData('text/plain'), col.dataset.fase);
-    };
-  });
+}
+function quickFase(id, fase){
+  const p = state.posts.find(x=>x.id===id); if (!p) return;
+  // Poortwachters lopen via het paneel: fase alvast voorgezet, opslaan valideert
+  openEdit(id, { fase, ...(fase==='Gepubliceerd' && p.datum!==todayISO() ? {datum:todayISO()} : {}) });
+  if (fase==='Ingepland' && !p.datum) toast('Kies een publicatiedatum');
+  if (fase==='Learnings') toast('Schrijf je learnings op — dat is de winst van deze stap');
 }
 
-// ─── RENDER: KALENDER ───────────────────────────────────────────
+// ─── RENDER: KALENDER (binnen Planning) ─────────────────────────
 function renderCal(){
-  const wrap = document.getElementById('calwrap');
+  const wrap = document.getElementById('planning');
+  if (!document.getElementById('calgrid')) return;
   if (!calMaand) calMaand = todayISO().slice(0,7);
   const [y,m] = calMaand.split('-').map(Number);
   const eerste = new Date(y, m-1, 1);
@@ -726,8 +698,39 @@ function runway(){
   return { tempoWk, voorraad, gepland, weken: tempoWk>0 ? (voorraad+gepland)/tempoWk : null };
 }
 
-function renderInzichten(){
-  const el = document.getElementById('inzwrap');
+// ─── VIEW 1: PRESTATIE ──────────────────────────────────────────
+function metaStatsHtml(){
+  if (!state.meta || !state.meta.length) {
+    return `<div class="activatie">📡 <b>Live Meta-advertentiecijfers</b> (CPC, CTR, uitgaven, kosten per lead) verschijnen hier automatisch<br>
+    zodra de Meta-koppeling actief is — <b>fase 2</b>: Meta Developer-app + token in een Supabase Edge Function (veilig server-side).<br>
+    De databasetabel en dit scherm staan al klaar.</div>`;
+  }
+  // Aggregeer per campagne+advertentie over de laatste 30 dagen
+  const cut = isoDaysAgo(30);
+  const agg = {};
+  state.meta.filter(r=>(r.datum||'')>=cut).forEach(r=>{
+    const k = (r.campagne||'—')+'|'+(r.advertentie||'—');
+    const a = agg[k] ??= { campagne:r.campagne||'—', advertentie:r.advertentie||'—', uitgegeven:0, impressies:0, kliks:0, leads:0 };
+    a.uitgegeven+=Number(r.uitgegeven)||0; a.impressies+=Number(r.impressies)||0; a.kliks+=Number(r.kliks)||0; a.leads+=Number(r.leads)||0;
+  });
+  const rows = Object.values(agg).sort((a,b)=>b.uitgegeven-a.uitgegeven).map(a=>{
+    const cpc = a.kliks? a.uitgegeven/a.kliks : 0, ctr = a.impressies? a.kliks/a.impressies*100 : 0, cpl = a.leads? a.uitgegeven/a.leads : 0;
+    return `<tr><td><b>${esc(a.campagne)}</b><br><small style="color:var(--muted)">${esc(a.advertentie)}</small></td>
+      <td class="rr">€${a.uitgegeven.toFixed(2)}</td><td class="rr">${fmtN(a.impressies)}</td><td class="rr">${fmtN(a.kliks)}</td>
+      <td class="rr">€${cpc.toFixed(2)}</td><td class="rr">${ctr.toFixed(2)}%</td><td class="rr">${a.leads}</td>
+      <td class="rr">${a.leads?'€'+cpl.toFixed(2):'—'}</td></tr>`;
+  }).join('');
+  const laatst = state.meta[0]?.synced_at ? state.meta[0].synced_at.slice(0,16).replace('T',' ') : '';
+  return `<div style="overflow-x:auto"><table class="itable metatable"><tr><th>Campagne / advertentie</th><th class="rr">Uitgegeven</th><th class="rr">Impressies</th><th class="rr">Kliks</th><th class="rr">CPC</th><th class="rr">CTR</th><th class="rr">Leads</th><th class="rr">€/lead</th></tr>${rows}</table></div>
+  <div class="syncnote">Laatste sync: ${laatst||'onbekend'} · 30 dagen · richtlijn NL: Meta-CPC voor vacatureverkeer ± €0,30-0,40</div>`;
+}
+
+function renderPrestatie(){
+  const el = document.getElementById('prestatie');
+  const P = state.posts;
+  const maand = todayISO().slice(0,7);
+  const pubM = P.filter(p=>PUB(p) && (p.datum||'').startsWith(maand));
+  const som = key => pubM.reduce((s,p)=>s+(Number(p.resultaat?.[key])||0),0);
   const K = ketenAnalyse(90);
   const contentGroepen = ['Meta','LinkedIn','TikTok'];
   const rows = contentGroepen.filter(g=>K[g]).map(g=>{
@@ -751,12 +754,14 @@ function renderInzichten(){
   }
 
   const { adviezen, pubs } = watWerkt();
-  const radar = vacatureRadar();
-  const rw = runway();
   const nag = state.posts.filter(p=>PUB(p) && p.datum && p.datum <= isoDaysAgo(3) && !(Number(p.resultaat?.bereik)>0));
 
   el.innerHTML = `
   <div class="inzgrid">
+    <div class="inzbox" style="grid-column:1/-1"><h4>📡 Live advertenties (Meta)</h4>${metaStatsHtml()}</div>
+    <div class="inzbox" style="grid-column:1/-1"><h4>📈 Organisch deze maand</h4>
+      <div class="split" style="margin-top:2px"><span><b style="font-size:22px">${pubM.length}</b> gepubliceerd</span><span><b style="font-size:22px">${som('bereik').toLocaleString('nl-NL')}</b> bereik</span><span><b style="font-size:22px">${som('leads')}</b> leads</span></div>
+    </div>
     <div class="inzbox" style="grid-column:1/-1"><h4>⛓ De keten: content → kandidaat → plaatsing (90 dagen)</h4>
       <div class="toel">Posts uit dit bord naast kandidaten en plaatsingen met die bron op het pijplijnbord. Zo zie je wat content écht oplevert${state.fees?' — inclusief fees':''}.</div>
       <div style="overflow-x:auto"><table class="itable"><tr><th>Kanaal → bron</th><th class="rr">Posts</th><th class="rr">Bereik</th><th class="rr">Kandidaten</th><th class="rr">Plaatsingen</th><th class="rr">Fees</th><th class="rr">Posts per kandidaat</th></tr>${rows || '<tr><td colspan="7" style="color:var(--muted)">Nog geen gepubliceerde posts in de laatste 90 dagen.</td></tr>'}</table></div>
@@ -774,20 +779,47 @@ function renderInzichten(){
       <div class="advies"><b>🕐 "Beste posttijd" is een mythe — eigen data wint</b>Instagram-chef Mosseri: tijdstip heeft geen directe invloed op ranking; kwaliteit wél. Daarom leert dit bord van je éigen resultaten (zie "Wat werkt") in plaats van generieke tijdstippen.<br><small>Mosseri 2025/2026 · Buffer 9,6M-posts-analyse</small></div>
       <div class="advies"><b>⛓ Jullie unieke wapen: de gesloten keten</b>Bron-attributie is hét onopgeloste probleem in recruitment-marketing (last-click meet alleen "eigen website"). Dit bord meet content → kandidaat → plaatsing → fee via het pijplijnbord — wat de markt niet kan.<br><small>Stand van Werven 2025 · Rally</small></div>
     </div>
-    <div class="inzbox"><h4>📡 Vacature-contentradar</h4>
-      <div class="toel">Open vacatures van het pijplijnbord zonder content in de afgelopen 14 dagen én zonder iets in de pijplijn. Oudste eerst — daar knelt het.</div>
-      ${radar.length ? radar.slice(0,8).map(x=>`<div class="gapviz"><div class="gv"><b>${esc(x.key)}</b><small>${x.dgnOpen!=null?x.dgnOpen+' dgn open · ':''}${x.nContent} post${x.nContent===1?'':'s'} ooit</small></div><button class="gapbtn" data-vacpost="${esc(x.key)}">→ maak post</button></div>`).join('')
-        : `<div class="toel" style="margin:0">✅ Elke open vacature heeft recente of geplande content.</div>`}
-    </div>
-    <div class="inzbox"><h4>⏳ Content-runway</h4>
-      <div class="big">${rw.weken===null ? '—' : (rw.weken>=9 ? '9+ wkn' : rw.weken.toFixed(1)+' wkn')}</div>
-      <div class="sub">${rw.voorraad} in voorraad + ${rw.gepland} ingepland · tempo ${rw.tempoWk.toFixed(1)}/week (laatste 4 wkn)</div>
-      ${rw.weken!==null && rw.weken < 2 ? `<div class="advies rood" style="margin-top:10px"><b>🔥 Voorraad bijna droog</b>Op dit tempo zit je binnen ${Math.ceil(rw.weken*7)} dagen zonder content. Plan een brainstorm of gebruik 🎲 Inspiratie.</div>`
-        : rw.weken===null ? `<div class="toel" style="margin-top:8px">Nog geen publicatietempo gemeten — verschijnt na je eerste gepubliceerde posts.</div>` : ''}
-    </div>
   </div>`;
 
   el.querySelectorAll('[data-open]').forEach(u=>u.onclick=()=>openEdit(u.dataset.open));
+}
+
+// ─── VIEW 2: CONTENT CREATIE ────────────────────────────────────
+function renderCreatie(){
+  const el = document.getElementById('creatie');
+  const P = filtered();
+  const items = P.filter(p=>p.fase==='Idee'||p.fase==='Script klaar')
+    .sort((a,b)=>(b._updatedAt||b.createdAt||'').localeCompare(a._updatedAt||a.createdAt||''));
+  const radar = vacatureRadar();
+  const rw = runway();
+  el.innerHTML = `
+  <div class="cre-actions">
+    <button class="bigbtn" id="cre_nieuw">+ Nieuw idee / post</button>
+    <button class="bigbtn" id="cre_video">🎬 Nieuw videoscript</button>
+    <button class="bigbtn sec" id="cre_inspiratie">🎲 Inspiratie</button>
+  </div>
+  <div class="cregrid">
+    <div style="display:flex;flex-direction:column;gap:12px">
+      <div class="inzbox"><h4>⏳ Voorraad & tempo</h4>
+        <div class="big">${rw.weken===null ? (rw.voorraad+rw.gepland) : (rw.weken>=9 ? '9+ wkn' : rw.weken.toFixed(1)+' wkn')}</div>
+        <div class="sub">${rw.voorraad} in de maak + ${rw.gepland} ingepland${rw.tempoWk?` · tempo ${rw.tempoWk.toFixed(1)}/wk`:''}</div>
+        ${rw.weken!==null && rw.weken<2 ? `<div class="advies rood" style="margin-top:10px"><b>🔥 Voorraad bijna droog</b>Binnen ${Math.ceil(rw.weken*7)} dagen zonder content — gebruik 🎲 Inspiratie of de radar hieronder.</div>`:''}
+      </div>
+      <div class="inzbox"><h4>📌 Waar content nodig is</h4>
+        <div class="toel">Open vacatures van het pijplijnbord zonder recente of geplande content.</div>
+        ${radar.length ? radar.slice(0,8).map(x=>`<div class="gapviz"><div class="gv"><b>${esc(x.key)}</b><small>${x.dgnOpen!=null?x.dgnOpen+' dgn open · ':''}${x.nContent} post${x.nContent===1?'':'s'} ooit</small></div><button class="gapbtn" data-vacpost="${esc(x.key)}">→ maak</button></div>`).join('')
+          : `<div class="toel" style="margin:0">✅ Elke open vacature is gedekt.</div>`}
+      </div>
+    </div>
+    <div>
+      <div class="postgrid">${items.map(cardHtml).join('') || ''}</div>
+      ${items.length? '' : `<div class="activatie">Nog geen ideeën of scripts in de maak.<br>Start met <b>+ Nieuw idee</b>, <b>🎬 Nieuw videoscript</b> of laat je verrassen met <b>🎲 Inspiratie</b>.</div>`}
+    </div>
+  </div>`;
+  bindCards(el);
+  el.querySelector('#cre_nieuw').onclick = () => openEdit(null);
+  el.querySelector('#cre_video').onclick = () => { openEdit(null, {}); document.getElementById('f_format').value='Reel / video'; insertVideoTemplate(); };
+  el.querySelector('#cre_inspiratie').onclick = openInspiratie;
   el.querySelectorAll('[data-vacpost]').forEach(b=>b.onclick=()=>{
     const key = b.dataset.vacpost;
     openEdit(null, { vacature:key, doel:'Kandidaten werven' });
@@ -795,48 +827,71 @@ function renderInzichten(){
   });
 }
 
-function render(){
-  renderDash();
-  document.getElementById('board').style.display = view==='bord' ? '' : 'none';
-  document.getElementById('calwrap').style.display = view==='kalender' ? 'block' : 'none';
-  document.getElementById('inzwrap').style.display = view==='inzichten' ? 'flex' : 'none';
-  document.getElementById('viewbord').classList.toggle('on', view==='bord');
-  document.getElementById('viewcal').classList.toggle('on', view==='kalender');
-  document.getElementById('viewinz').classList.toggle('on', view==='inzichten');
-  if (view==='bord') renderBoard();
-  else if (view==='kalender') renderCal();
-  else renderInzichten();
-}
-
-// ─── MOVE + POORTWACHTERS ───────────────────────────────────────
-function move(id, fase){
-  const p = state.posts.find(x=>x.id===id);
-  if (!p || p.fase === fase) return;
-  // Poortwachters: open het paneel met de doel-fase alvast ingevuld
-  if (fase==='Ingepland' && !p.datum) { openEdit(id, {fase}); toast('Publicatiedatum nodig om in te plannen'); return; }
-  if (fase==='Gepubliceerd') {
-    if (!p.datum || p.datum > todayISO()) p.datum = todayISO();
-    openEdit(id, {fase}); toast('Gepubliceerd — vul link en resultaten in'); savePost(p); return;
+// ─── VIEW 3: PLANNING ───────────────────────────────────────────
+function renderPlanning(){
+  const el = document.getElementById('planning');
+  const P = filtered();
+  const today = todayISO();
+  const gepland = P.filter(p=>p.fase==='Ingepland').sort((a,b)=>(a.datum||'9999').localeCompare(b.datum||'9999'));
+  const gemist = gepland.filter(p=>p.datum && p.datum<today);
+  const recent = P.filter(p=>PUB(p)).sort((a,b)=>(b.datum||'').localeCompare(a.datum||'')).slice(0,8);
+  // komende 7 dagen strip
+  let wk='';
+  for (let i=0;i<7;i++){
+    const d=new Date(); d.setDate(d.getDate()+i);
+    const iso=d.toISOString().slice(0,10);
+    const dag=['zo','ma','di','wo','do','vr','za'][d.getDay()];
+    const its=P.filter(p=>p.datum===iso && (p.fase==='Ingepland'||PUB(p)));
+    wk+=`<div class="wcell${i===0?' today':''}"><div class="n">${its.length||'·'}</div><div class="l">${dag} ${fmtD(iso).slice(0,5)}</div>${its.slice(0,3).map(p=>`<div class="t"><span class="kdot" style="background:${kanaalKleur(p.kanaal)}"></span> ${esc(p.titel.slice(0,22))}</div>`).join('')}</div>`;
   }
-  if (fase==='Learnings' && !p.learnings) { openEdit(id, {fase}); toast('Schrijf je learnings op — dat is de winst van deze kolom'); return; }
-  p.fase = fase;
-  savePost(p); render();
-}
-async function savePost(p){ await upsertPost(p); }
-
-// ─── PHASE PICKER (mobiel) ──────────────────────────────────────
-function openPhasePicker(id){
-  const p = state.posts.find(x=>x.id===id); if (!p) return;
-  document.getElementById('phasetitle').textContent = `"${p.titel}" verplaatsen naar…`;
-  document.getElementById('phaselist').innerHTML = FASES.map(f=>
-    `<button class="phopt${f.k===p.fase?' cur':''}" data-f="${f.k}"><span class="phc" style="background:${f.c}"></span>${f.k}</button>`).join('');
-  const scrim = document.getElementById('phasescrim');
-  scrim.classList.add('open');
-  scrim.querySelectorAll('.phopt').forEach(b=>{
-    b.onclick = () => { scrim.classList.remove('open'); move(id, b.dataset.f); };
+  el.innerHTML = `
+  <div class="inzbox"><h4>Komende 7 dagen</h4><div class="wgrid">${wk}</div></div>
+  <div class="calbox">
+    <div class="calhead">
+      <h3 id="caltitle"></h3>
+      <button class="calnav" id="calprev">‹</button>
+      <button class="calnav" id="calvandaag">Vandaag</button>
+      <button class="calnav" id="calnext">›</button>
+      <span style="font-size:11.5px;color:var(--muted)">Klik op een dag om in te plannen · klik op een post om te bewerken</span>
+    </div>
+    <div class="calgrid" id="calgrid"></div>
+  </div>
+  <div class="inzgrid">
+    <div class="inzbox"><h4>📅 Agenda — ingepland (${gepland.length})</h4>
+      ${gemist.length?`<div class="advies rood"><b>⏰ ${gemist.length} over datum</b>Publiceer alsnog of kies een nieuwe datum.</div>`:''}
+      ${gepland.map(p=>`<div class="planrow${p.datum&&p.datum<today?' gemist':''}" data-open="${p.id}" style="cursor:pointer"><span class="pd">${fmtD(p.datum)||'—'}${p.tijd?' '+p.tijd.slice(0,5):''}</span><span class="kdot" style="background:${kanaalKleur(p.kanaal)}"></span><span class="pt">${esc(p.titel)}</span><button class="qbtn" data-q="${p.id}|Gepubliceerd">✔</button></div>`).join('') || '<div class="toel" style="margin:0">Niets ingepland — plan vanuit de kalender of Content Creatie.</div>'}
+    </div>
+    <div class="inzbox"><h4>✔ Recent gepubliceerd</h4>
+      ${recent.map(p=>`<div class="planrow" data-open="${p.id}" style="cursor:pointer"><span class="pd">${fmtD(p.datum)||'—'}</span><span class="kdot" style="background:${kanaalKleur(p.kanaal)}"></span><span class="pt">${esc(p.titel)}</span>${Number(p.resultaat?.bereik)>0?`<small style="color:var(--muted)">👁 ${fmtN(p.resultaat.bereik)}</small>`:'<small style="color:#a86a1a">📊 resultaten?</small>'}</div>`).join('') || '<div class="toel" style="margin:0">Nog niets gepubliceerd.</div>'}
+    </div>
+  </div>`;
+  renderCal();
+  el.querySelectorAll('[data-open]').forEach(r=>r.onclick = e => {
+    if (e.target.dataset.q) { const [id,fase]=e.target.dataset.q.split('|'); quickFase(id,fase); return; }
+    openEdit(r.dataset.open);
   });
-  scrim.onclick = e => { if (e.target===scrim) scrim.classList.remove('open'); };
+  el.querySelector('#calprev').onclick = () => { const [y,m]=calMaand.split('-').map(Number); const d=new Date(y,m-2,1); calMaand=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`; renderCal(); };
+  el.querySelector('#calnext').onclick = () => { const [y,m]=calMaand.split('-').map(Number); const d=new Date(y,m,1); calMaand=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`; renderCal(); };
+  el.querySelector('#calvandaag').onclick = () => { calMaand = todayISO().slice(0,7); renderCal(); };
 }
+
+function render(){
+  VIEWS.forEach(v=>{
+    document.getElementById(v).style.display = view===v ? 'flex' : 'none';
+  });
+  document.querySelectorAll('.navtab').forEach(t=>t.classList.toggle('on', t.dataset.view===view));
+  const nCre = state.posts.filter(p=>p.fase==='Idee'||p.fase==='Script klaar').length;
+  const nPlan = state.posts.filter(p=>p.fase==='Ingepland').length;
+  document.getElementById('nb_cre').textContent = nCre||'';
+  document.getElementById('nb_plan').textContent = nPlan||'';
+  if (view==='prestatie') renderPrestatie();
+  else if (view==='creatie') renderCreatie();
+  else renderPlanning();
+}
+document.querySelectorAll('.navtab').forEach(t=>{
+  t.onclick = () => { view = t.dataset.view; localStorage.setItem('mkt_view', view); render(); };
+});
+async function savePost(p){ await upsertPost(p); }
 
 // ─── EDIT PANEL ─────────────────────────────────────────────────
 let editId = null;
@@ -996,12 +1051,55 @@ document.getElementById('m_addk').onclick = async () => {
 };
 
 // ─── TOP BAR ────────────────────────────────────────────────────
-document.getElementById('add').onclick = () => openEdit(null);
 document.getElementById('search').oninput = () => render();
 document.getElementById('kfilter').onchange = () => render();
-document.getElementById('viewbord').onclick = () => { view='bord'; localStorage.setItem('mkt_view',view); render(); };
-document.getElementById('viewcal').onclick = () => { view='kalender'; localStorage.setItem('mkt_view',view); render(); };
-document.getElementById('viewinz').onclick = () => { view='inzichten'; localStorage.setItem('mkt_view',view); render(); };
+
+// ─── VIDEOSCRIPT-TEMPLATE & AI-PROMPTS ──────────────────────────
+// Template volgt de geverifieerde regels: hook ≤2s met salaris, kort, cv-loze CTA
+const VIDEO_TEMPLATE = `🎬 WERVINGSVIDEO — SHOTLIST
+
+HOOK (0-2 sec, salaris/cijfer in beeld + gesproken):
+"…"
+
+SHOT 1 — werkvloer, echt werk (2-6 sec):
+…
+
+SHOT 2 — de mens: collega/kandidaat aan het woord (6-15 sec):
+…
+
+WAT JE KRIJGT (15-22 sec, tekst in beeld):
+• €… bruto + …% toeslag
+• …
+
+CTA (22-28 sec):
+"Geen cv nodig — stuur ons een appje." (WhatsApp-link in caption)
+
+CAPTION:
+…`;
+function insertVideoTemplate(){
+  const s = document.getElementById('f_script');
+  s.value = s.value.trim() ? s.value + '\n\n' + VIDEO_TEMPLATE : VIDEO_TEMPLATE;
+  updateChecklist();
+  toast('🎬 Template ingevoegd — vul de shots in');
+}
+function promptContext(){
+  const g = id => document.getElementById(id).value;
+  return `Bedrijf: Ploeggenoten — recruitmentbureau voor productie, logistiek en industrie. Kernzin: "Wij sturen geen leads of kandidaten. Wij bouwen ploegen." Toon: direct, eerlijk, geen wollige recruitmenttaal.
+Post: ${g('f_titel')||'(nog geen titel)'}
+Kanaal: ${g('f_kanaal')||'nader te bepalen'} · Format: ${g('f_format')||'nader te bepalen'} · Doel: ${g('f_doel')||'nader te bepalen'}
+${g('f_vacature')?`Vacature: ${g('f_vacature')}`:''}
+${g('f_hook')?`Hook-idee: ${g('f_hook')}`:''}
+Regels (onderzoek 2026, geverifieerd): salaris/toeslag expliciet noemen; hook in de eerste 2 seconden, max 12 woorden; kort en mobile-first; lage-drempel CTA (solliciteren zonder cv, via WhatsApp); GEEN engagement-bait zoals "tag iemand" of "like als" (Meta demoteert dat) — een oprechte meningsvraag mag wel; taal: gewone-mensen-Nederlands, B1-niveau.`;
+}
+document.getElementById('f_vidtpl').onclick = insertVideoTemplate;
+document.getElementById('f_aiscript').onclick = () => {
+  const prompt = `Schrijf een compleet script + caption voor deze social-media-post.\n\n${promptContext()}\n\nLever: (1) 3 hook-varianten, (2) volledig script of caption, (3) shotlist als het video is, (4) voorgestelde WhatsApp-CTA-zin.`;
+  navigator.clipboard.writeText(prompt).then(()=>toast('🤖 Scriptprompt gekopieerd — plak in Claude'));
+};
+document.getElementById('f_aibeeld').onclick = () => {
+  const prompt = `Maak een beeldconcept/prompt voor een AI-beeldgenerator (of briefing voor een designer) bij deze social-media-post.\n\n${promptContext()}\n\nStijl Ploeggenoten: echte werkvloer (productie/logistiek), geen stockfoto-gevoel, warm licht, mensen centraal; huisstijlkleuren olijfgroen #3d6400 en limoen #c8f135 als accent, font Anton voor grote tekst. Lever: (1) beschrijving van het beeld, (2) een kant-en-klare prompt voor de beeldgenerator, (3) welke tekst-overlay erop moet (kort, met salaris indien werving).`;
+  navigator.clipboard.writeText(prompt).then(()=>toast('🎨 Beeldprompt gekopieerd — plak in Claude of Higgsfield'));
+};
 
 // ─── UTM-BOUWER ─────────────────────────────────────────────────
 function slug(s){ return String(s||'').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'').replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'').slice(0,40); }
@@ -1063,13 +1161,10 @@ function rollIdeeen(){
     };
   });
 }
-document.getElementById('inspiratie').onclick = () => { rollIdeeen(); document.getElementById('iscrim').classList.add('open'); };
+function openInspiratie(){ rollIdeeen(); document.getElementById('iscrim').classList.add('open'); }
 document.getElementById('i_reroll').onclick = rollIdeeen;
 document.getElementById('i_close').onclick = () => document.getElementById('iscrim').classList.remove('open');
 document.getElementById('iscrim').onclick = e => { if (e.target.id==='iscrim') document.getElementById('iscrim').classList.remove('open'); };
-document.getElementById('calprev').onclick = () => { const [y,m]=calMaand.split('-').map(Number); const d=new Date(y,m-2,1); calMaand=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`; renderCal(); };
-document.getElementById('calnext').onclick = () => { const [y,m]=calMaand.split('-').map(Number); const d=new Date(y,m,1); calMaand=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`; renderCal(); };
-document.getElementById('calvandaag').onclick = () => { calMaand = todayISO().slice(0,7); renderCal(); };
 
 // Vernieuw data als tab weer zichtbaar wordt
 document.addEventListener('visibilitychange', async () => {

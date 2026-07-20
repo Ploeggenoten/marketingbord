@@ -33,6 +33,22 @@ create table if not exists mkt_kanalen (
   volgorde int  not null default 0
 );
 
+-- Live Meta-advertentiecijfers (gevuld door de fase 2-Edge Function 'meta-sync';
+-- de app leest alleen — schrijven gebeurt server-side met de service-role key)
+create table if not exists mkt_meta_stats (
+  id          bigint generated always as identity primary key,
+  datum       date not null,
+  campagne    text not null default '',
+  advertentie text not null default '',
+  uitgegeven  numeric not null default 0,
+  impressies  int not null default 0,
+  kliks       int not null default 0,
+  leads       int not null default 0,
+  bereik      int not null default 0,
+  synced_at   timestamptz not null default now(),
+  unique (datum, campagne, advertentie)
+);
+
 -- Bestaat de tabel al van een eerdere run? Voeg nieuwe kolommen toe.
 alter table mkt_posts add column if not exists vacature text not null default '';
 alter table mkt_posts add column if not exists utm text not null default '';
@@ -41,7 +57,7 @@ alter table mkt_posts add column if not exists utm text not null default '';
 do $$
 declare t text;
 begin
-  foreach t in array array['mkt_posts','mkt_kanalen'] loop
+  foreach t in array array['mkt_posts','mkt_kanalen','mkt_meta_stats'] loop
     execute format('alter table %I enable row level security', t);
     execute format('drop policy if exists mkt_team on %I', t);
     execute format(
