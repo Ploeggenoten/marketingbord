@@ -45,6 +45,17 @@ Deno.serve(async (req) => {
     }
     if (!account.startsWith("act_")) account = "act_" + account;
 
+    // ── debug-stand: laat zien wat de token is en mag (geen geheimen in de output) ──
+    const url0 = new URL(req.url);
+    if (url0.searchParams.get("debug") === "1") {
+      const q = async (path: string) =>
+        await (await fetch(`${GRAPH}/${path}${path.includes("?") ? "&" : "?"}access_token=${encodeURIComponent(token)}`)).json();
+      const me = await q("me?fields=id,name");
+      const perms = await q("me/permissions");
+      const accts = await q("me/adaccounts?fields=id,name,account_status&limit=25");
+      return json({ debug: true, gezocht_account: account, me, permissions: perms, adaccounts: accts });
+    }
+
     // ── inzichten ophalen: per dag, per advertentie, laatste 30 dagen ──
     const fields = "campaign_name,ad_name,spend,impressions,clicks,reach,actions";
     let url = `${GRAPH}/${account}/insights?level=ad&fields=${fields}` +
