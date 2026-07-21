@@ -60,7 +60,9 @@ Deno.serve(async (req) => {
     const fields = "campaign_name,ad_name,spend,impressions,clicks,reach,actions";
     let url = `${GRAPH}/${account}/insights?level=ad&fields=${fields}` +
       `&time_increment=1&date_preset=last_30d&limit=500&access_token=${encodeURIComponent(token)}`;
-    const rows: Record<string, unknown>[] = [];
+    // Meerdere ads kunnen dezelfde naam hebben → aggregeer per (datum, campagne, advertentienaam),
+    // anders botst de upsert ("cannot affect row a second time").
+    const agg = new Map<string, Record<string, unknown>>();
     for (let page = 0; page < 10 && url; page++) {
       const res = await fetch(url);
       const data = await res.json();
@@ -69,20 +71,22 @@ Deno.serve(async (req) => {
         const leads = (r.actions ?? [])
           .filter((a: { action_type: string }) => LEAD_TYPES.has(a.action_type))
           .reduce((s: number, a: { value: string }) => s + Number(a.value || 0), 0);
-        rows.push({
-          datum: r.date_start,
-          campagne: r.campaign_name ?? "",
-          advertentie: r.ad_name ?? "",
-          uitgegeven: Number(r.spend || 0),
-          impressies: Number(r.impressions || 0),
-          kliks: Number(r.clicks || 0),
-          leads,
-          bereik: Number(r.reach || 0),
+        const key = `${r.date_start}|${r.campaign_name ?? ""}|${r.ad_name ?? ""}`;
+        const cur = agg.get(key) ?? {
+          datum: r.date_start, campagne: r.campaign_name ?? "", advertentie: r.ad_name ?? "",
+          uitgegeven: 0, impressies: 0, kliks: 0, leads: 0, bereik: 0,
           synced_at: new Date().toISOString(),
-        });
+        };
+        cur.uitgegeven = (cur.uitgegeven as number) + Number(r.spend || 0);
+        cur.impressies = (cur.impressies as number) + Number(r.impressions || 0);
+        cur.kliks = (cur.kliks as number) + Number(r.clicks || 0);
+        cur.leads = (cur.leads as number) + leads;
+        cur.bereik = (cur.bereik as number) + Number(r.reach || 0);
+        agg.set(key, cur);
       }
       url = data.paging?.next ?? "";
     }
+    const rows = [...agg.values()];
 
     // ── wegschrijven met service-role (app leest alleen) ──
     const db = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
