@@ -844,10 +844,12 @@ function adWaakhond(){
     const besluit = state.besluiten.find(b=>b.advertentie===advertentie && b.campagne===campagne && b.status==='open');
     // Gemarkeerd om te stoppen → bewaken of hij écht uit staat
     if (besluit?.besluit==='stop'){
+      const wie = besluit.door==='Claude-agent' ? '🤖 Claude-agent' : esc(besluit.door);
+      const noteTxt = besluit.note ? `<br><small style="color:var(--muted)">${esc(besluit.note)}</small>` : '';
       uit.push({ sev: s2.spend>1 ? 'rood' : 'groen', campagne, advertentie, besluit,
         titel: s2.spend>1 ? 'Nog niet stopgezet in Ads Manager' : 'Stop bevestigd — geen uitgaven meer',
-        txt: s2.spend>1 ? `Door ${esc(besluit.door)} gemarkeerd om te stoppen, maar er ging de afgelopen 2 dagen nog €${s2.spend.toFixed(2)} doorheen. Zet hem uit in Ads Manager.`
-                        : `Gemarkeerd door ${esc(besluit.door)}; laatste 2 dagen €0. Klik ✓ om af te ronden.`,
+        txt: (s2.spend>1 ? `Door ${wie} gemarkeerd om te stoppen, maar er ging de afgelopen 2 dagen nog €${s2.spend.toFixed(2)} doorheen. Zet hem uit in Ads Manager.`
+                        : `Gemarkeerd door ${wie}; laatste 2 dagen €0. Klik ✓ om af te ronden.`) + noteTxt,
         acties: s2.spend>1 ? ['adsmanager'] : ['bevestig'] });
       continue;
     }
@@ -897,6 +899,35 @@ async function adBevestig(id){
   const { error } = await sb.from('mkt_ad_besluiten').update({status:'bevestigd'}).eq('id', id);
   if (!error) { await loadFromDB(); render(); toast('✓ Stop bevestigd'); }
 }
+function autoStopActief(){
+  const c = state.besluiten.find(b=>b.advertentie==='__auto_stop__');
+  return c?.besluit === 'aan';
+}
+async function toggleAutoStop(){
+  const naar = autoStopActief() ? 'uit' : 'aan';
+  if (naar==='aan' && !confirm('Auto-stop aanzetten?\n\nDe Claude-agent mag dan zelf advertenties PAUZEREN (nooit verwijderen of budgetten wijzigen) als ze duidelijk falen: geld op zonder leads, of kosten per lead ver boven jullie gemiddelde. Max 2 per dag, altijd met reden gelogd, en "negeer"-besluiten worden gerespecteerd.')) return;
+  const { error } = await sb.from('mkt_ad_besluiten').insert({
+    advertentie:'__auto_stop__', campagne:'', besluit:naar, status:'config',
+    door: currentProfile?.naam || currentUser?.email || ''
+  });
+  if (error) { toast('Opslaan mislukt'); return; }
+  await loadFromDB(); render();
+  toast(naar==='aan' ? '🤖 Auto-stop AAN — de agent mag falende ads pauzeren' : 'Auto-stop UIT — de agent adviseert alleen nog');
+}
+let _agentBusy = false;
+async function runAgent(){
+  if (_agentBusy) return;
+  _agentBusy = true; toast('🤖 Agent leest de cijfers…');
+  try {
+    const { data, error } = await sb.functions.invoke('ad-guard?force=1');
+    if (error || data?.error) toast('⚠ ' + (data?.error || error?.message || 'agent-run mislukt'));
+    else {
+      await loadFromDB(); render();
+      toast(data.kandidaten===0 || data.melding ? `🤖 ${data.melding || 'Klaar'}` : `🤖 ${data.beoordeeld} beoordeeld, ${data.gestopt} gestopt`);
+    }
+  } catch(e) { toast('⚠ Agent niet bereikbaar'); }
+  _agentBusy = false;
+}
 function waakhondHtml(){
   const adviezen = adWaakhond();
   if (!state.meta || !state.meta.length) return '';
@@ -911,8 +942,16 @@ function waakhondHtml(){
         if (act==='adsmanager') return `<a class="qbtn" href="${ADSMANAGER_URL}" target="_blank" style="text-decoration:none">↗ Open Ads Manager</a>`;
       }).join('')}
     </div></div>`;
-  return `<div class="inzbox" style="grid-column:1/-1"><h4>🐕 Advertentie-waakhond</h4>
-    <div class="toel">Kijkt elke dag na de sync naar alle lopende advertenties. Bij 🔴 en 🟡 beslis jij (Bryan): stopzetten of laten lopen — de app zet zelf nooit iets uit, en bewaakt na een stop-besluit of de uitgaven echt naar nul gaan.</div>
+  const auto = autoStopActief();
+  return `<div class="inzbox" style="grid-column:1/-1">
+    <h4 style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">🐕 Advertentie-waakhond
+      <span style="display:flex;gap:6px">
+        <button class="qbtn" id="agentrunbtn">🤖 Agent nu draaien</button>
+        <button class="qbtn" id="autostopbtn" style="${auto?'background:#e4f1e9;border-color:#a8d0b6;color:#1e6b3f':''}">${auto?'🤖 Auto-stop: AAN':'🤖 Auto-stop: uit'}</button>
+      </span></h4>
+    <div class="toel">Kijkt elke dag na de sync naar alle lopende advertenties. Bij 🔴 en 🟡 kan Bryan stopzetten of laten lopen. ${auto
+      ? 'Auto-stop staat <b>AAN</b>: de Claude-agent pauzeert zelf advertenties die duidelijk falen (max 2/dag, alleen pauzeren, altijd met reden hieronder gelogd).'
+      : 'Auto-stop staat <b>uit</b>: de agent adviseert alleen; niets wordt automatisch gepauzeerd.'}</div>
     ${adviezen.length ? adviezen.map(kaart).join('') : '<div class="advies"><b>✅ Alles gezond</b>Geen advertentie die aandacht vraagt — alle lopende ads presteren binnen de normale marges.</div>'}
   </div>`;
 }
@@ -1005,6 +1044,8 @@ function renderPrestatie(){
       else adBesluit(a, c, act);
     };
   });
+  el.querySelector('#agentrunbtn')?.addEventListener('click', runAgent);
+  el.querySelector('#autostopbtn')?.addEventListener('click', toggleAutoStop);
   el.querySelectorAll('[data-rm]').forEach(b=>b.onclick=()=>remakePost(b.dataset.rm));
   el.querySelector('#lb_zoek').oninput = e => { _lbQ = e.target.value; document.getElementById('lb_lijst').innerHTML = learningsLijstHtml(); el.querySelectorAll('#lb_lijst [data-rm]').forEach(b=>b.onclick=()=>remakePost(b.dataset.rm)); };
   el.querySelector('#lb_kanaal').onchange = e => { _lbK = e.target.value; document.getElementById('lb_lijst').innerHTML = learningsLijstHtml(); el.querySelectorAll('#lb_lijst [data-rm]').forEach(b=>b.onclick=()=>remakePost(b.dataset.rm)); };
