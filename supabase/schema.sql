@@ -53,11 +53,23 @@ create table if not exists mkt_meta_stats (
 alter table mkt_posts add column if not exists vacature text not null default '';
 alter table mkt_posts add column if not exists utm text not null default '';
 
+-- Besluiten van de advertentie-waakhond (Bryan beslist; app adviseert alleen)
+create table if not exists mkt_ad_besluiten (
+  id          bigint generated always as identity primary key,
+  advertentie text not null,
+  campagne    text not null default '',
+  besluit     text not null,               -- 'stop' | 'negeer' | 'opschalen'
+  status      text not null default 'open',-- 'open' | 'bevestigd'
+  door        text not null default '',
+  note        text not null default '',
+  created_at  timestamptz not null default now()
+);
+
 -- ── RLS: hele team (zelfde model als het pijplijnbord) ──────────
 do $$
 declare t text;
 begin
-  foreach t in array array['mkt_posts','mkt_kanalen','mkt_meta_stats'] loop
+  foreach t in array array['mkt_posts','mkt_kanalen','mkt_meta_stats','mkt_ad_besluiten'] loop
     execute format('alter table %I enable row level security', t);
     execute format('drop policy if exists mkt_team on %I', t);
     execute format(

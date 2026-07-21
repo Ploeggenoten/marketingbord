@@ -426,7 +426,7 @@ const FASES = [
   {k:'Gepubliceerd',  c:'#3d9968'},
   {k:'Learnings',     c:'#4a9d9d'},
 ];
-const state = { posts: [], kanalen: [], vacs: [], cands: [], fees: null, meta: null };
+const state = { posts: [], kanalen: [], vacs: [], cands: [], fees: null, meta: null, besluiten: [] };
 const VIEWS = ['prestatie','creatie','planning'];
 let view = localStorage.getItem('mkt_view') || 'prestatie';
 if (!VIEWS.includes(view)) view = {bord:'creatie', kalender:'planning', inzichten:'prestatie'}[view] || 'prestatie';
@@ -482,6 +482,8 @@ async function loadFromDB(){
   // Live Meta-cijfers (gevuld door de fase 2-Edge Function; tabel kan nog leeg/afwezig zijn)
   const mR = await sb.from('mkt_meta_stats').select('*').order('datum',{ascending:false}).limit(400);
   state.meta = mR.error ? null : (mR.data||[]);
+  const bR = await sb.from('mkt_ad_besluiten').select('*').order('created_at',{ascending:false});
+  state.besluiten = bR.error ? [] : (bR.data||[]);
 }
 async function upsertPost(p){
   const row = { ...postToRow(p), updated_by: currentUser?.id, updated_at: new Date().toISOString() };
@@ -810,6 +812,109 @@ function metaAutoSync(){
   if (!laatst || (Date.now() - new Date(laatst).getTime()) > 6*3600e3) metaSync(false);
 }
 
+// ─── ADVERTENTIE-WAAKHOND ───────────────────────────────────────
+// Kijkt elke dag naar de gesyncte cijfers; adviseert, Bryan beslist.
+const ADSMANAGER_URL = 'https://adsmanager.facebook.com/adsmanager/manage/ads?act=1838026573565202';
+function adStats(rows){
+  const s = { spend:0, imp:0, kliks:0, leads:0, bereik:0 };
+  rows.forEach(r=>{ s.spend+=Number(r.uitgegeven)||0; s.imp+=Number(r.impressies)||0; s.kliks+=Number(r.kliks)||0; s.leads+=Number(r.leads)||0; s.bereik+=Number(r.bereik)||0; });
+  s.cpc = s.kliks? s.spend/s.kliks : null;
+  s.ctr = s.imp? s.kliks/s.imp : null;
+  s.cpl = s.leads? s.spend/s.leads : null;
+  return s;
+}
+function adWaakhond(){
+  if (!state.meta || !state.meta.length) return [];
+  const d7 = isoDaysAgo(7), d14 = isoDaysAgo(14), d2 = isoDaysAgo(2);
+  const perAd = {};
+  state.meta.forEach(r=>{
+    const k = (r.campagne||'—')+'|'+(r.advertentie||'—');
+    (perAd[k] ??= []).push(r);
+  });
+  const acc30 = adStats(state.meta);
+  const uit = [];
+  for (const [k, rows] of Object.entries(perAd)){
+    const [campagne, advertentie] = k.split('|');
+    const s7 = adStats(rows.filter(r=>r.datum>=d7));
+    const sPrev = adStats(rows.filter(r=>r.datum>=d14 && r.datum<d7));
+    const s30 = adStats(rows);
+    const s2 = adStats(rows.filter(r=>r.datum>=d2));
+    const besluit = state.besluiten.find(b=>b.advertentie===advertentie && b.campagne===campagne && b.status==='open');
+    // Gemarkeerd om te stoppen → bewaken of hij écht uit staat
+    if (besluit?.besluit==='stop'){
+      uit.push({ sev: s2.spend>1 ? 'rood' : 'groen', campagne, advertentie, besluit,
+        titel: s2.spend>1 ? 'Nog niet stopgezet in Ads Manager' : 'Stop bevestigd — geen uitgaven meer',
+        txt: s2.spend>1 ? `Door ${esc(besluit.door)} gemarkeerd om te stoppen, maar er ging de afgelopen 2 dagen nog €${s2.spend.toFixed(2)} doorheen. Zet hem uit in Ads Manager.`
+                        : `Gemarkeerd door ${esc(besluit.door)}; laatste 2 dagen €0. Klik ✓ om af te ronden.`,
+        acties: s2.spend>1 ? ['adsmanager'] : ['bevestig'] });
+      continue;
+    }
+    if (besluit?.besluit==='negeer' && (Date.now()-new Date(besluit.created_at))/864e5 < 7) continue;
+    if (s7.spend < 20) continue; // te weinig data om over te oordelen
+    const cijfers = `7 dgn: €${s7.spend.toFixed(0)} · ${s7.leads} leads${s7.cpl?` · €${s7.cpl.toFixed(0)}/lead`:''}${s7.cpc?` · CPC €${s7.cpc.toFixed(2)}`:''}${s7.ctr!=null?` · CTR ${(s7.ctr*100).toFixed(2)}%`:''}`;
+    // 🔴 stop-signalen
+    if (s7.leads===0 && s7.spend>=25){
+      uit.push({ sev:'rood', campagne, advertentie, titel:'Geld op, nul leads', txt:`€${s7.spend.toFixed(0)} uitgegeven in 7 dagen zonder één lead. ${cijfers}`, acties:['stop','negeer'] });
+      continue;
+    }
+    if (s7.cpl && acc30.cpl && s7.cpl > 2.5*acc30.cpl){
+      uit.push({ sev:'rood', campagne, advertentie, titel:'Kosten per lead uit de bocht', txt:`€${s7.cpl.toFixed(0)}/lead vs €${acc30.cpl.toFixed(0)} accountgemiddelde (${(s7.cpl/acc30.cpl).toFixed(1)}×). ${cijfers}`, acties:['stop','negeer'] });
+      continue;
+    }
+    // 🟡 waarschuwingen
+    if (s7.cpc && s30.cpc && s7.cpc > 1.5*s30.cpc){
+      uit.push({ sev:'geel', campagne, advertentie, titel:'CPC loopt op — creative raakt vermoeid', txt:`CPC €${s7.cpc.toFixed(2)} vs €${s30.cpc.toFixed(2)} eigen 30-dagen-gemiddelde. Overweeg een verse variant. ${cijfers}`, acties:['stop','negeer'] });
+      continue;
+    }
+    if (s7.ctr!=null && acc30.ctr && s7.ctr < 0.6*acc30.ctr){
+      uit.push({ sev:'geel', campagne, advertentie, titel:'CTR blijft achter', txt:`CTR ${(s7.ctr*100).toFixed(2)}% vs ${(acc30.ctr*100).toFixed(2)}% accountgemiddelde — de creative pakt niet. ${cijfers}`, acties:['stop','negeer'] });
+      continue;
+    }
+    if (sPrev.spend>0 && s7.spend > 0.8*sPrev.spend && sPrev.bereik>0 && s7.bereik < 0.6*sPrev.bereik){
+      uit.push({ sev:'geel', campagne, advertentie, titel:'Bereik droogt op bij gelijk budget', txt:`Bereik ${fmtN(s7.bereik)} vs ${fmtN(sPrev.bereik)} vorige week — publiek raakt verzadigd. ${cijfers}`, acties:['stop','negeer'] });
+      continue;
+    }
+    // 🟢 winnaar
+    if (s7.cpl && acc30.cpl && s7.cpl < 0.6*acc30.cpl && s7.leads>=3){
+      uit.push({ sev:'groen', campagne, advertentie, titel:'Winnaar — overweeg opschalen', txt:`€${s7.cpl.toFixed(0)}/lead, ver onder het gemiddelde van €${acc30.cpl.toFixed(0)}. ${cijfers}`, acties:['negeer'] });
+    }
+  }
+  const orde = { rood:0, geel:1, groen:2 };
+  return uit.sort((a,b)=>orde[a.sev]-orde[b.sev]);
+}
+async function adBesluit(advertentie, campagne, besluit){
+  const { error } = await sb.from('mkt_ad_besluiten').insert({
+    advertentie, campagne, besluit, door: currentProfile?.naam || currentUser?.email || '', status:'open'
+  });
+  if (error) { toast('Opslaan mislukt — is de besluiten-tabel al aangemaakt?'); console.error(error); return; }
+  await loadFromDB(); render();
+  if (besluit==='stop') { toast('⏸ Gemarkeerd — zet hem nu ook echt uit in Ads Manager'); window.open(ADSMANAGER_URL,'_blank'); }
+  else toast('Genoteerd');
+}
+async function adBevestig(id){
+  const { error } = await sb.from('mkt_ad_besluiten').update({status:'bevestigd'}).eq('id', id);
+  if (!error) { await loadFromDB(); render(); toast('✓ Stop bevestigd'); }
+}
+function waakhondHtml(){
+  const adviezen = adWaakhond();
+  if (!state.meta || !state.meta.length) return '';
+  const kaart = a => `<div class="advies ${a.sev==='rood'?'rood':a.sev==='geel'?'warn':''}">
+    <b>${a.sev==='rood'?'🔴':a.sev==='geel'?'🟡':'🟢'} ${esc(a.titel)}</b>
+    <span style="font-weight:600">${esc(a.advertentie)}</span> <small>· ${esc(a.campagne)}</small><br>${a.txt}
+    <div style="margin-top:7px;display:flex;gap:6px;flex-wrap:wrap">
+      ${(a.acties||[]).map(act=>{
+        if (act==='stop') return `<button class="qbtn" data-wh="stop|${esc(a.advertentie)}|${esc(a.campagne)}" style="border-color:#c9a49e;color:var(--red)">⏸ Stopzetten</button>`;
+        if (act==='negeer') return `<button class="qbtn" data-wh="negeer|${esc(a.advertentie)}|${esc(a.campagne)}">✓ Prima zo / negeer 7 dgn</button>`;
+        if (act==='bevestig') return `<button class="qbtn" data-wh="bevestig|${a.besluit.id}|">✓ Afronden</button>`;
+        if (act==='adsmanager') return `<a class="qbtn" href="${ADSMANAGER_URL}" target="_blank" style="text-decoration:none">↗ Open Ads Manager</a>`;
+      }).join('')}
+    </div></div>`;
+  return `<div class="inzbox" style="grid-column:1/-1"><h4>🐕 Advertentie-waakhond</h4>
+    <div class="toel">Kijkt elke dag na de sync naar alle lopende advertenties. Bij 🔴 en 🟡 beslis jij (Bryan): stopzetten of laten lopen — de app zet zelf nooit iets uit, en bewaakt na een stop-besluit of de uitgaven echt naar nul gaan.</div>
+    ${adviezen.length ? adviezen.map(kaart).join('') : '<div class="advies"><b>✅ Alles gezond</b>Geen advertentie die aandacht vraagt — alle lopende ads presteren binnen de normale marges.</div>'}
+  </div>`;
+}
+
 function renderPrestatie(){
   const el = document.getElementById('prestatie');
   const P = state.posts;
@@ -843,6 +948,7 @@ function renderPrestatie(){
 
   el.innerHTML = `
   <div class="inzgrid">
+    ${waakhondHtml()}
     <div class="inzbox" style="grid-column:1/-1"><h4 style="display:flex;justify-content:space-between;align-items:center">📡 Live advertenties (Meta) <button class="qbtn" id="metasyncbtn">↻ Sync nu</button></h4>${metaStatsHtml()}</div>
     <div class="inzbox" style="grid-column:1/-1"><h4>📈 Organisch deze maand</h4>
       <div class="split" style="margin-top:2px"><span><b style="font-size:22px">${pubM.length}</b> gepubliceerd</span><span><b style="font-size:22px">${som('bereik').toLocaleString('nl-NL')}</b> bereik</span><span><b style="font-size:22px">${som('leads')}</b> leads</span></div>
@@ -868,6 +974,13 @@ function renderPrestatie(){
 
   el.querySelectorAll('[data-open]').forEach(u=>u.onclick=()=>openEdit(u.dataset.open));
   el.querySelector('#metasyncbtn').onclick = () => metaSync(true);
+  el.querySelectorAll('[data-wh]').forEach(b=>{
+    b.onclick = () => {
+      const [act, a, c] = b.dataset.wh.split('|');
+      if (act==='bevestig') adBevestig(Number(a));
+      else adBesluit(a, c, act);
+    };
+  });
 }
 
 // ─── VIEW 2: CONTENT CREATIE ────────────────────────────────────
