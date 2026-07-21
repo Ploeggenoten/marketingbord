@@ -13,7 +13,7 @@
 //    verwijderen, nooit campagnebudgetten, nooit targeting/creative.
 //  - Stops alleen als config __auto_stop__ = aan; budget alleen als
 //    __auto_budget__ = aan. Beide staan standaard UIT (schakelaars in de app).
-//  - Budget: max ±30% per wijziging, min €5/dag, totaal dagbudget van het
+//  - Budget: max ±20% per wijziging, min €5/dag, totaal dagbudget van het
 //    account mag per run niet stijgen, max 1 wijziging per set per 48 uur.
 //  - Max 2 ad-stops per run. 'negeer'-besluiten 7 dagen gerespecteerd.
 //  - Alles gelogd in mkt_ad_besluiten met reden.
@@ -24,7 +24,7 @@ import Anthropic from "npm:@anthropic-ai/sdk";
 
 const GRAPH = "https://graph.facebook.com/v21.0";
 const MAX_STOPS_PER_RUN = 2;
-const MAX_BUDGET_STAP = 0.30;      // ±30% per wijziging
+const MAX_BUDGET_STAP = 0.20;      // ±20% per stap (onderzoek 21 jul 2026; groter = 2 stappen met 48u)
 const MIN_DAGBUDGET_EUR = 5;
 const BUDGET_COOLDOWN_UUR = 48;
 
@@ -82,12 +82,12 @@ Deno.serve(async (req) => {
     const q = async (path: string) =>
       await (await fetch(`${GRAPH}/${path}${path.includes("?") ? "&" : "?"}access_token=${encodeURIComponent(token)}`)).json();
     const campagnesResp = await q(`${account}/campaigns?fields=id,name,daily_budget,lifetime_budget,effective_status&limit=200`);
-    const adsetsResp = await q(`${account}/adsets?fields=id,name,daily_budget,lifetime_budget,campaign{name},effective_status&limit=500`);
+    const adsetsResp = await q(`${account}/adsets?fields=id,name,daily_budget,lifetime_budget,campaign{name},effective_status,learning_stage_info&limit=500`);
     const adsResp = await q(`${account}/ads?fields=id,name,adset{name},campaign{name},effective_status&limit=500`);
     if (campagnesResp.error || adsetsResp.error) {
       return json({ error: "Meta API: " + (campagnesResp.error?.message || adsetsResp.error?.message) }, 502);
     }
-    type MetaSet = { id: string; name: string; daily_budget?: string; lifetime_budget?: string; campaign?: { name: string }; effective_status: string };
+    type MetaSet = { id: string; name: string; daily_budget?: string; lifetime_budget?: string; campaign?: { name: string }; effective_status: string; learning_stage_info?: { status?: string } };
     const liveSets = (adsetsResp.data ?? []) as MetaSet[];
     const liveCamps = (campagnesResp.data ?? []) as { id: string; name: string; daily_budget?: string; effective_status: string }[];
     const liveAds = (adsResp.data ?? []) as { id: string; name: string; adset?: { name: string }; campaign?: { name: string }; effective_status: string }[];
@@ -118,7 +118,8 @@ Deno.serve(async (req) => {
         const s7 = stats(setRows.filter((r) => r.datum >= d7));
         const sPrev = stats(setRows.filter((r) => r.datum >= d14 && r.datum < d7));
         const budget = ls?.daily_budget ? `${eur(Number(ls.daily_budget) / 100)}/dag` : (isCBO ? "via CBO" : "onbekend");
-        overzicht += `- Set "${setNaam}" [${ls?.effective_status ?? "?"}] budget ${budget}: 7d ${eur(s7.spend)}, ${s7.leads} leads${s7.cpl ? ` (${eur(s7.cpl)}/lead)` : ""}, CTR ${s7.ctr ? (s7.ctr * 100).toFixed(2) + "%" : "?"} | vorige 7d: ${eur(sPrev.spend)}, ${sPrev.leads} leads\n`;
+        const leer = ls?.learning_stage_info?.status ? ` leerfase:${ls.learning_stage_info.status}` : "";
+        overzicht += `- Set "${setNaam}" [${ls?.effective_status ?? "?"}${leer}] budget ${budget}: 7d ${eur(s7.spend)}, ${s7.leads} leads${s7.cpl ? ` (${eur(s7.cpl)}/lead)` : ""}, CTR ${s7.ctr ? (s7.ctr * 100).toFixed(2) + "%" : "?"} | vorige 7d: ${eur(sPrev.spend)}, ${sPrev.leads} leads\n`;
         // hook-verdeling binnen de set (7d impressie-aandeel)
         const perAd = new Map<string, Row[]>();
         for (const r of setRows.filter((x) => x.datum >= d7)) {
@@ -151,13 +152,13 @@ ${overzicht}
 Recente besluiten (niet herhalen, cooldowns respecteren):
 ${recenteBesluiten}
 
-SPEELREGELS (onderbouwd; wijk hier niet vanaf):
-- CBO (campagnebudget) laat Meta verdelen op verwachte prestatie — NIET eerlijk over sets/functies. Voor eerlijke verdeling per functie: ABO (budget per set). Aparte campagnes per functie zijn NIET nodig zolang sets eigen budget hebben.
-- Budget wijzigen: max ±20-30% per keer, daarna 48-72u met rust (grotere sprongen resetten de leerfase).
-- Bijschalen alleen bij consistent bewijs: set met €/lead duidelijk onder accountgemiddelde over ≥7 dagen én stabiel/lopend volume.
-- Afschalen/pauzeren: set of ad die ≥ 2-3× het account-€/lead uitgeeft zonder resultaat, of substantieel geld zonder één lead.
-- Hook-verdeling: Meta geeft binnen een set snel 1-2 hooks vrijwel alle impressies. Hooks met <10% impressie-aandeel na ≥4 dagen zijn feitelijk ongetest — signaleer dit en adviseer een concrete testaanpak (bijv. tijdelijke aparte testset met klein eigen budget, of de dominante hook kort pauzeren), maar voer het niet zelf uit.
-- Leerfase: ~50 conversies per set per week is het ideaal; bij kleine budgetten dus liever minder, grotere sets dan veel versnipperde.
+SPEELREGELS (geverifieerd onderzoek 21 jul 2026 — Meta-documentatie + adversarieel geverifieerde practitioner-consensus; wijk hier niet vanaf):
+- LEERFASE (Meta-gedocumenteerd): een set verlaat de leerfase na ~50 optimalisatie-events binnen 7 dagen. Bij dit budget (€500-3000/mnd) kunnen maar 1-3 sets tegelijk echt leren. Budgetversnippering is DE faalmodus: veel dunne sets = veel ondergefinancierde experimenten. Sets met status "Learning limited" → adviseer samenvoegen. Een set per functie is alleen goed als die functie genoeg leadvolume heeft; kleine functies bundelen in één set.
+- CBO vs ABO (Meta-gedocumenteerd): CBO verdeelt bewust NIET eerlijk — het schuift realtime naar de best voorspellende set (tot 99% naar één set). Voor eerlijke verdeling per functie: ABO (budget per set). Aparte campagnes per functie zijn onnodig. LET OP: de nieuwe optie "Ad Set Budget Sharing" schuift tot 20% tussen ABO-sets en staat soms standaard aan — adviseer die uit te zetten als eerlijke verdeling het doel is.
+- HOOK-TESTING: binnen een set hongeren nieuwe hooks binnen ~48u uit naast een bewezen winnaar. De bewezen aanpak: aparte kleine ABO-TESTCAMPAGNE met één hook-concept per set en vast eigen budget; winnaars daarna opschalen in de hoofdcampagne via post-ID-hergebruik (social proof blijft behouden). Dynamic Creative is uitgefaseerd en flexible ads rapporteren geaggregeerd — géén substituut voor echte hook-tests. Hooks met <10% impressie-aandeel na ≥4 dagen zijn feitelijk ongetest — signaleer en adviseer de testcampagne-aanpak (niet zelf uitvoeren).
+- BUDGET WIJZIGEN: max ~20% per stap; grotere aanpassing = twee stappen met 48u ertussen. Frequente budgetwijzigingen zijn een door Meta genoemde reset-trigger — dus liever één goed getimede wijziging dan dagelijks schuiven. GEEN budget-edits aan sets die in de leerfase zitten, en kill/scale-oordelen pas op data van ná de leerfase (CPA is tijdens leren structureel hoger en instabieler).
+- ANDROMEDA (2025): Meta's retrieval laat creatives al vóór de veiling concurreren en beloont creative-diversiteit BINNEN minder sets. Advies-richting: meer verschillende hooks in weinig goed gefinancierde sets, CBO voor bewezen materiaal, ABO als testlaag.
+- KILL-DREMPELS: er bestaat géén door onderzoek geverifieerde universele spend×CPA-drempel — de gehanteerde drempels (geld zonder leads, meervoud van account-€/lead) zijn beleidskeuzes van Ploeggenoten; noem ze zo in je reden en wees er terughoudend mee.
 - Wees terughoudend: geen advies is beter dan een zwak advies. Attributie loopt 1-2 dagen achter.
 
 Geef je adviezen. Types:
@@ -241,6 +242,7 @@ Elke reden in het Nederlands, kort, mét de cijfers die het onderbouwen. vertrou
         if (kanUitvoeren) {
           // clamp ±30%, min €5, cooldown 48u, totaal mag niet stijgen
           doelEur = Math.max(MIN_DAGBUDGET_EUR, Math.min(huidigEur! * (1 + MAX_BUDGET_STAP), Math.max(huidigEur! * (1 - MAX_BUDGET_STAP), doelEur)));
+          if (ls!.learning_stage_info?.status === "LEARNING") { kanUitvoeren = false; detail = "set zit in de leerfase — Meta adviseert dan geen budget-edits"; }
           const cutCooldown = new Date(Date.now() - BUDGET_COOLDOWN_UUR * 3600e3).toISOString();
           const recent = (besluiten ?? []).some((b) => b.besluit === "budget" && b.advertentie === adv.advertentieset && b.created_at > cutCooldown);
           if (recent) { kanUitvoeren = false; detail = "cooldown 48u"; }
