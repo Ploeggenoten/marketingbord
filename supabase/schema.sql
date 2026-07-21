@@ -52,6 +52,7 @@ create table if not exists mkt_meta_stats (
 -- Bestaat de tabel al van een eerdere run? Voeg nieuwe kolommen toe.
 alter table mkt_posts add column if not exists vacature text not null default '';
 alter table mkt_posts add column if not exists utm text not null default '';
+alter table mkt_kanalen add column if not exists doel_pw int not null default 0;
 
 -- Besluiten van de advertentie-waakhond (Bryan beslist; app adviseert alleen)
 create table if not exists mkt_ad_besluiten (

@@ -566,6 +566,7 @@ function quickBtns(p){
   if (p.fase==='Script klaar') return `<button class="qbtn" data-q="${p.id}|Ingepland">📅 inplannen</button>`;
   if (p.fase==='Ingepland') return `<button class="qbtn" data-q="${p.id}|Gepubliceerd">✔ gepubliceerd</button>`;
   if (p.fase==='Gepubliceerd') return `<button class="qbtn" data-q="${p.id}|Learnings">💡 learnings noteren</button>`;
+  if (p.fase==='Learnings') return `<button class="qbtn" data-rm="${p.id}">🔁 remake</button>`;
   return '';
 }
 function bindCards(root){
@@ -573,6 +574,7 @@ function bindCards(root){
     c.onclick = e => {
       if (e.target.dataset.copy) { copyScript(e.target.dataset.copy); return; }
       if (e.target.dataset.q) { const [id,fase]=e.target.dataset.q.split('|'); quickFase(id,fase); return; }
+      if (e.target.dataset.rm) { remakePost(e.target.dataset.rm); return; }
       openEdit(c.dataset.id);
     };
   });
@@ -915,6 +917,20 @@ function waakhondHtml(){
   </div>`;
 }
 
+// ─── LEARNINGS-BIBLIOTHEEK ──────────────────────────────────────
+let _lbQ = '', _lbK = '';
+function learningsLijstHtml(){
+  let items = state.posts.filter(p=>p.learnings && p.learnings.trim());
+  if (_lbK) items = items.filter(p=>p.kanaal===_lbK);
+  if (_lbQ) { const q=_lbQ.toLowerCase(); items = items.filter(p=>(p.learnings+' '+p.titel+' '+p.hook).toLowerCase().includes(q)); }
+  items.sort((a,b)=>(b.datum||'').localeCompare(a.datum||''));
+  if (!items.length) return `<div class="toel" style="margin:0">Nog geen learnings${_lbQ||_lbK?' met dit filter':''}. Elke post die de fase Learnings bereikt komt hier automatisch bij.</div>`;
+  return items.map(p=>`<div class="gapviz"><div class="gv">
+      <b>💡 ${esc(p.learnings)}</b>
+      <small>${esc(p.titel)} · ${esc(p.kanaal)}${p.format?' · '+esc(p.format):''}${p.datum?' · '+fmtD(p.datum):''}${Number(p.resultaat?.bereik)>0?` · 👁 ${fmtN(p.resultaat.bereik)}`:''}${Number(p.resultaat?.leads)>0?` · 🎯 ${p.resultaat.leads} leads`:''}</small>
+    </div><button class="gapbtn" data-rm="${p.id}">🔁 remake</button></div>`).join('');
+}
+
 function renderPrestatie(){
   const el = document.getElementById('prestatie');
   const P = state.posts;
@@ -949,7 +965,7 @@ function renderPrestatie(){
   el.innerHTML = `
   <div class="inzgrid">
     ${waakhondHtml()}
-    <div class="inzbox" style="grid-column:1/-1"><h4 style="display:flex;justify-content:space-between;align-items:center">📡 Live advertenties (Meta) <button class="qbtn" id="metasyncbtn">↻ Sync nu</button></h4>${metaStatsHtml()}</div>
+    <div class="inzbox" style="grid-column:1/-1"><h4 style="display:flex;justify-content:space-between;align-items:center;gap:8px">📡 Live advertenties (Meta) <span style="display:flex;gap:6px"><button class="qbtn" id="rapportbtn">🖨 Weekrapport</button><button class="qbtn" id="metasyncbtn">↻ Sync nu</button></span></h4>${metaStatsHtml()}</div>
     <div class="inzbox" style="grid-column:1/-1"><h4>📈 Organisch deze maand</h4>
       <div class="split" style="margin-top:2px"><span><b style="font-size:22px">${pubM.length}</b> gepubliceerd</span><span><b style="font-size:22px">${som('bereik').toLocaleString('nl-NL')}</b> bereik</span><span><b style="font-size:22px">${som('leads')}</b> leads</span></div>
     </div>
@@ -962,6 +978,14 @@ function renderPrestatie(){
       ${adviezen.length ? adviezen.map(a=>`<div class="advies"><b>${a.ico} ${a.titel}</b>${a.txt}</div>`).join('')
         : `<div class="toel">Nog te weinig resultaat-data (${pubs.length} posts met bereik). Vul na elke publicatie bereik/likes/leads in — vanaf ±4 posts verschijnen hier patronen: beste format, beste kanaal, beste dag en of cijfer-hooks voor jou werken.</div>`}
       ${nag.length ? `<div class="advies warn"><b>📊 ${nag.length} gepubliceerde post${nag.length>1?'s':''} zonder resultaten</b>Cijfers invullen duurt 1 minuut en voedt alle analyses hierboven. ${nag.slice(0,3).map(p=>`<u style="cursor:pointer" data-open="${p.id}">${esc(p.titel)}</u>`).join(' · ')}${nag.length>3?' · …':''}</div>`:''}
+    </div>
+    <div class="inzbox" style="grid-column:1/-1"><h4>📚 Learnings-bibliotheek</h4>
+      <div class="toel">Alles wat jullie geleerd hebben, bij elkaar — jullie eigen speelboek. Zoek of filter op kanaal.</div>
+      <div style="display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap">
+        <input id="lb_zoek" placeholder="Zoek in learnings…" style="flex:1;min-width:150px;border:1px solid var(--line);border-radius:8px;padding:8px 10px;font-size:13px" value="${esc(_lbQ)}">
+        <select id="lb_kanaal" style="border:1px solid var(--line);border-radius:8px;padding:8px;background:#fff"><option value="">alle kanalen</option>${state.kanalen.map(k=>`<option${_lbK===k.naam?' selected':''}>${esc(k.naam)}</option>`).join('')}</select>
+      </div>
+      <div id="lb_lijst">${learningsLijstHtml()}</div>
     </div>
     <div class="inzbox"><h4>📖 Speelboek — wat het onderzoek zegt (20 jul 2026)</h4>
       <div class="advies"><b>📣 Kanaalrollen: Meta/TikTok = kandidaten, LinkedIn = klanten</b>Maar 8% van blue-collar werkzoekenden zit op LinkedIn; kliks op Meta zijn 20–25× goedkoper (NL-data). Facebook is het lokale wervingskanaal (30+), TikTok voor jong instroomwerk. LinkedIn is voor klantcases en B2B.<br><small>Intelligence Group · MrWork NL 2024</small></div>
@@ -981,6 +1005,87 @@ function renderPrestatie(){
       else adBesluit(a, c, act);
     };
   });
+  el.querySelectorAll('[data-rm]').forEach(b=>b.onclick=()=>remakePost(b.dataset.rm));
+  el.querySelector('#lb_zoek').oninput = e => { _lbQ = e.target.value; document.getElementById('lb_lijst').innerHTML = learningsLijstHtml(); el.querySelectorAll('#lb_lijst [data-rm]').forEach(b=>b.onclick=()=>remakePost(b.dataset.rm)); };
+  el.querySelector('#lb_kanaal').onchange = e => { _lbK = e.target.value; document.getElementById('lb_lijst').innerHTML = learningsLijstHtml(); el.querySelectorAll('#lb_lijst [data-rm]').forEach(b=>b.onclick=()=>remakePost(b.dataset.rm)); };
+  el.querySelector('#rapportbtn').onclick = () => openRapport(7);
+}
+
+// ─── WEEK/MAANDRAPPORT (print-vriendelijk) ──────────────────────
+function openRapport(dagen){
+  const cut = isoDaysAgo(dagen);
+  const pubs = state.posts.filter(p=>PUB(p) && (p.datum||'')>=cut);
+  const som = k => pubs.reduce((s,p)=>s+(Number(p.resultaat?.[k])||0),0);
+  const top = [...pubs].sort((a,b)=>(Number(b.resultaat?.bereik)||0)-(Number(a.resultaat?.bereik)||0))[0];
+  const meta = (state.meta||[]).filter(r=>(r.datum||'')>=cut);
+  const ms = adStats(meta);
+  const perCamp = {};
+  meta.forEach(r=>{ const c = perCamp[r.campagne||'—'] ??= {spend:0,kliks:0,leads:0}; c.spend+=Number(r.uitgegeven)||0; c.kliks+=Number(r.kliks)||0; c.leads+=Number(r.leads)||0; });
+  const candsM = state.cands.filter(c=>c.bron==='Meta' && (c.since||'')>=cut).length;
+  const learnings = state.posts.filter(p=>p.learnings && (p.datum||'')>=cut);
+  const whRood = adWaakhond().filter(a=>a.sev==='rood');
+  const w = window.open('', '_blank');
+  if (!w) { toast('Pop-up geblokkeerd — sta pop-ups toe voor deze site'); return; }
+  w.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>Ploeggenoten marketingrapport — ${fmtD(cut)} t/m ${fmtD(todayISO())}</title>
+  <style>body{font-family:-apple-system,system-ui,sans-serif;max-width:720px;margin:32px auto;padding:0 20px;color:#1a1f0a;line-height:1.5}
+  h1{font-size:22px;border-bottom:3px solid #c8f135;padding-bottom:8px}h2{font-size:15px;margin-top:26px;text-transform:uppercase;letter-spacing:.05em;color:#3d6400}
+  table{width:100%;border-collapse:collapse;font-size:13.5px}td,th{text-align:left;padding:6px 8px;border-bottom:1px solid #e0e5d2}th{font-size:11px;text-transform:uppercase;color:#697256}
+  .kpi{display:inline-block;margin:4px 18px 4px 0}.kpi b{font-size:22px;display:block}.rr{text-align:right}
+  .note{background:#f4f8ec;border-left:4px solid #6fa03c;padding:8px 12px;margin:6px 0;font-size:13.5px}
+  @media print{button{display:none}}</style></head><body>
+  <h1>Ploeggenoten · Marketingrapport <small style="font-weight:400;font-size:14px">· ${fmtD(cut)} t/m ${fmtD(todayISO())}</small></h1>
+  <button onclick="print()" style="padding:8px 16px;border:1px solid #ccc;border-radius:8px;cursor:pointer">🖨 Afdrukken / PDF</button>
+  <h2>Organische content</h2>
+  <div><span class="kpi"><b>${pubs.length}</b>gepubliceerd</span><span class="kpi"><b>${som('bereik').toLocaleString('nl-NL')}</b>bereik</span><span class="kpi"><b>${som('leads')}</b>leads</span></div>
+  ${top && Number(top.resultaat?.bereik)>0 ? `<div class="note">🏆 Beste post: <b>${esc(top.titel)}</b> (${esc(top.kanaal)}) — ${fmtN(top.resultaat.bereik)} bereik, ${top.resultaat.leads||0} leads</div>`:''}
+  <h2>Advertenties (Meta)</h2>
+  ${meta.length ? `<div><span class="kpi"><b>€${ms.spend.toFixed(2)}</b>uitgegeven</span><span class="kpi"><b>${fmtN(ms.kliks)}</b>kliks</span><span class="kpi"><b>${ms.cpc?'€'+ms.cpc.toFixed(2):'—'}</b>CPC</span><span class="kpi"><b>${ms.leads}</b>leads</span><span class="kpi"><b>${ms.cpl?'€'+ms.cpl.toFixed(2):'—'}</b>per lead</span></div>
+  <table><tr><th>Campagne</th><th class="rr">Uitgegeven</th><th class="rr">Kliks</th><th class="rr">Leads</th><th class="rr">€/lead</th></tr>
+  ${Object.entries(perCamp).sort((a,b)=>b[1].spend-a[1].spend).map(([c,d])=>`<tr><td>${esc(c)}</td><td class="rr">€${d.spend.toFixed(2)}</td><td class="rr">${fmtN(d.kliks)}</td><td class="rr">${d.leads}</td><td class="rr">${d.leads?'€'+(d.spend/d.leads).toFixed(2):'—'}</td></tr>`).join('')}</table>
+  ${candsM?`<div class="note">⛓ ${candsM} nieuwe kandidaten met bron Meta op het pijplijnbord in deze periode${ms.spend?` — €${(ms.spend/candsM).toFixed(0)} per kandidaat`:''}</div>`:''}` : '<p>Nog geen advertentiedata in deze periode.</p>'}
+  ${whRood.length?`<h2>Aandachtspunten waakhond</h2>${whRood.map(a=>`<div class="note" style="border-left-color:#c0392b">🔴 ${esc(a.advertentie)} — ${esc(a.titel)}</div>`).join('')}`:''}
+  ${learnings.length?`<h2>Learnings deze periode</h2>${learnings.map(p=>`<div class="note">💡 ${esc(p.learnings)} <small>(${esc(p.titel)})</small></div>`).join('')}`:''}
+  <p style="color:#697256;font-size:11px;margin-top:30px">Gegenereerd door het Ploeggenoten Marketingbord · ${new Date().toLocaleString('nl-NL')}</p>
+  </body></html>`);
+  w.document.close();
+}
+
+// ─── DAGSTART (wat moet Bryan vandaag doen?) ────────────────────
+function dagstartHtml(){
+  const today = todayISO();
+  const P = state.posts;
+  const items = [];
+  P.filter(p=>p.fase==='Ingepland' && p.datum===today).forEach(p=>
+    items.push({ico:'📤', txt:`Publiceren vandaag${p.tijd?' om '+p.tijd.slice(0,5):''}: <b>${esc(p.titel)}</b> (${esc(p.kanaal)})`, open:p.id}));
+  P.filter(p=>p.fase==='Ingepland' && p.datum && p.datum<today).forEach(p=>
+    items.push({ico:'⏰', txt:`Over datum (${fmtD(p.datum)}): <b>${esc(p.titel)}</b> — publiceren of verzetten`, open:p.id, rood:true}));
+  P.filter(p=>PUB(p) && p.datum && p.datum<=isoDaysAgo(3) && !(Number(p.resultaat?.bereik)>0)).slice(0,3).forEach(p=>
+    items.push({ico:'📊', txt:`Resultaten invullen: <b>${esc(p.titel)}</b>`, open:p.id}));
+  const wh = adWaakhond().filter(a=>a.sev==='rood').length;
+  if (wh) items.push({ico:'🐕', txt:`<b>${wh} advertentie${wh>1?'s':''}</b> met een rood waakhond-advies — beoordeel stopzetten`, goto:'prestatie', rood:true});
+  const gaten = vacatureRadar().length;
+  if (gaten) items.push({ico:'📌', txt:`${gaten} open vacature${gaten>1?'s':''} zonder content — zie radar hieronder`});
+  return `<div class="inzbox"><h4>☀️ Vandaag</h4>
+    ${items.length ? items.map(i=>`<div class="planrow${i.rood?' gemist':''}" ${i.open?`data-open="${i.open}"`:''} ${i.goto?`data-goto="${i.goto}"`:''} style="cursor:pointer"><span>${i.ico}</span><span class="pt">${i.txt}</span></div>`).join('')
+      : '<div class="toel" style="margin:0">✅ Geen urgente acties — mooi moment om aan nieuwe content te werken.</div>'}
+  </div>`;
+}
+
+// ─── REMAKE (van een goed presterende post een nieuw idee maken) ─
+async function remakePost(id){
+  const p = state.posts.find(x=>x.id===id); if (!p) return;
+  const n = {
+    id:'m'+Date.now()+Math.random().toString(36).slice(2,6),
+    titel:'Remake: '+p.titel, kanaal:p.kanaal, format:p.format, doel:p.doel,
+    fase:'Idee', campagne:p.campagne, vacature:p.vacature, utm:'', hook:p.hook, script:p.script,
+    datum:'', tijd:'', link:'', resultaat:{}, learnings:'',
+    notities: p.learnings ? [{t:new Date().toISOString(), wie:'waakhond', txt:'Learnings van het origineel: '+p.learnings}] : [],
+    createdAt:new Date().toISOString(), _updatedAt:new Date().toISOString()
+  };
+  state.posts.push(n);
+  await upsertPost(n);
+  view='creatie'; localStorage.setItem('mkt_view',view); render();
+  toast('🔁 Remake staat als nieuw idee klaar — learnings zitten in de notities');
 }
 
 // ─── VIEW 2: CONTENT CREATIE ────────────────────────────────────
@@ -992,6 +1097,7 @@ function renderCreatie(){
   const radar = vacatureRadar();
   const rw = runway();
   el.innerHTML = `
+  ${dagstartHtml()}
   <div class="cre-actions">
     <button class="bigbtn" id="cre_nieuw">+ Nieuw idee / post</button>
     <button class="bigbtn" id="cre_video">🎬 Nieuw videoscript</button>
@@ -1016,6 +1122,8 @@ function renderCreatie(){
     </div>
   </div>`;
   bindCards(el);
+  el.querySelectorAll('[data-open]').forEach(r=>r.onclick=()=>openEdit(r.dataset.open));
+  el.querySelectorAll('[data-goto]').forEach(r=>r.onclick=()=>{ view=r.dataset.goto; localStorage.setItem('mkt_view',view); render(); });
   el.querySelector('#cre_nieuw').onclick = () => openEdit(null);
   el.querySelector('#cre_video').onclick = () => { openEdit(null, {}); document.getElementById('f_format').value='Reel / video'; insertVideoTemplate(); };
   el.querySelector('#cre_inspiratie').onclick = openInspiratie;
@@ -1043,8 +1151,21 @@ function renderPlanning(){
     const its=P.filter(p=>p.datum===iso && (p.fase==='Ingepland'||PUB(p)));
     wk+=`<div class="wcell${i===0?' today':''}"><div class="n">${its.length||'·'}</div><div class="l">${dag} ${fmtD(iso).slice(0,5)}</div>${its.slice(0,3).map(p=>`<div class="t"><span class="kdot" style="background:${kanaalKleur(p.kanaal)}"></span> ${esc(p.titel.slice(0,22))}</div>`).join('')}</div>`;
   }
+  // Cadans-doelen per kanaal (week = ma t/m zo)
+  const nu = new Date(); const ws = new Date(nu); ws.setDate(nu.getDate()-((nu.getDay()+6)%7));
+  const wsIso = ws.toISOString().slice(0,10);
+  const metDoel = state.kanalen.filter(k=>Number(k.doel_pw)>0);
+  const cadansHtml = metDoel.length ? metDoel.map(k=>{
+    const n = state.posts.filter(p=>p.kanaal===k.naam && (p.datum||'')>=wsIso && (p.fase==='Ingepland'||PUB(p))).length;
+    const pct = Math.min(100, Math.round(n/k.doel_pw*100));
+    return `<div style="margin-bottom:8px"><div style="display:flex;justify-content:space-between;font-size:12.5px;font-weight:600"><span><span class="kdot" style="background:${k.kleur}"></span> ${esc(k.naam)}</span><span>${n}/${k.doel_pw}${n>=k.doel_pw?' ✓':''}</span></div>
+      <div style="height:7px;border-radius:4px;background:#e2e6d6;overflow:hidden;margin-top:3px"><i style="display:block;height:100%;width:${pct}%;background:${n>=k.doel_pw?'#2f8f5b':'#6fa03c'}"></i></div></div>`;
+  }).join('') : `<div class="toel" style="margin:0">Stel per kanaal een doel in (posts per week) via ⚙ Kanalen — dan zie je hier je voortgang.</div>`;
   el.innerHTML = `
-  <div class="inzbox"><h4>Komende 7 dagen</h4><div class="wgrid">${wk}</div></div>
+  <div class="inzgrid" style="grid-template-columns:2fr 1fr">
+    <div class="inzbox"><h4>Komende 7 dagen</h4><div class="wgrid">${wk}</div></div>
+    <div class="inzbox"><h4>🎯 Cadans deze week</h4>${cadansHtml}</div>
+  </div>
   <div class="calbox">
     <div class="calhead">
       <h3 id="caltitle"></h3>
@@ -1215,6 +1336,8 @@ function renderKanalen(){
     return `<div class="krow2">
       <input type="color" value="${k.kleur}" data-kleur="${esc(k.naam)}">
       <span class="kn2">${esc(k.naam)}</span>
+      <label style="font-size:11px;color:var(--muted);display:flex;align-items:center;gap:4px">doel/wk
+        <input type="number" min="0" max="21" value="${Number(k.doel_pw)||0}" data-doelpw="${esc(k.naam)}" style="width:50px;border:1px solid var(--line);border-radius:6px;padding:4px 6px"></label>
       ${inUse ? `<span style="font-size:11px;color:var(--muted)">${state.posts.filter(p=>p.kanaal===k.naam).length} posts</span>`
               : `<button class="x" data-delk="${esc(k.naam)}" title="Verwijderen">✕</button>`}
     </div>`;
@@ -1224,6 +1347,14 @@ function renderKanalen(){
       await sb.from('mkt_kanalen').update({kleur: inp.value}).eq('naam', inp.dataset.kleur);
       const k = state.kanalen.find(x=>x.naam===inp.dataset.kleur); if (k) k.kleur = inp.value;
       render(); toast('Kleur aangepast');
+    };
+  });
+  document.querySelectorAll('#klist [data-doelpw]').forEach(inp=>{
+    inp.onchange = async () => {
+      const { error } = await sb.from('mkt_kanalen').update({doel_pw: Number(inp.value)||0}).eq('naam', inp.dataset.doelpw);
+      if (error) { toast('Doel opslaan mislukt — kolom doel_pw nog niet aangemaakt?'); console.error(error); return; }
+      const k = state.kanalen.find(x=>x.naam===inp.dataset.doelpw); if (k) k.doel_pw = Number(inp.value)||0;
+      toast('🎯 Doel opgeslagen');
     };
   });
   document.querySelectorAll('#klist [data-delk]').forEach(b=>{
