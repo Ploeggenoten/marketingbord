@@ -57,7 +57,7 @@ Deno.serve(async (req) => {
     }
 
     // ── inzichten ophalen: per dag, per advertentie, laatste 30 dagen ──
-    const fields = "campaign_name,ad_name,spend,impressions,clicks,reach,actions";
+    const fields = "campaign_name,adset_name,ad_name,spend,impressions,clicks,reach,actions";
     let url = `${GRAPH}/${account}/insights?level=ad&fields=${fields}` +
       `&time_increment=1&date_preset=last_30d&limit=500&access_token=${encodeURIComponent(token)}`;
     // Meerdere ads kunnen dezelfde naam hebben → aggregeer per (datum, campagne, advertentienaam),
@@ -71,9 +71,9 @@ Deno.serve(async (req) => {
         const leads = (r.actions ?? [])
           .filter((a: { action_type: string }) => LEAD_TYPES.has(a.action_type))
           .reduce((s: number, a: { value: string }) => s + Number(a.value || 0), 0);
-        const key = `${r.date_start}|${r.campaign_name ?? ""}|${r.ad_name ?? ""}`;
+        const key = `${r.date_start}|${r.campaign_name ?? ""}|${r.adset_name ?? ""}|${r.ad_name ?? ""}`;
         const cur = agg.get(key) ?? {
-          datum: r.date_start, campagne: r.campaign_name ?? "", advertentie: r.ad_name ?? "",
+          datum: r.date_start, campagne: r.campaign_name ?? "", advertentieset: r.adset_name ?? "", advertentie: r.ad_name ?? "",
           uitgegeven: 0, impressies: 0, kliks: 0, leads: 0, bereik: 0,
           synced_at: new Date().toISOString(),
         };
@@ -92,7 +92,7 @@ Deno.serve(async (req) => {
     const db = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
     if (rows.length) {
       const { error } = await db.from("mkt_meta_stats")
-        .upsert(rows, { onConflict: "datum,campagne,advertentie" });
+        .upsert(rows, { onConflict: "datum,campagne,advertentieset,advertentie" });
       if (error) return json({ error: "opslaan mislukt: " + error.message }, 500);
     }
     return json({ ok: true, regels: rows.length, account });

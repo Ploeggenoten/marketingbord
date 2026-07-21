@@ -53,6 +53,12 @@ create table if not exists mkt_meta_stats (
 alter table mkt_posts add column if not exists vacature text not null default '';
 alter table mkt_posts add column if not exists utm text not null default '';
 alter table mkt_kanalen add column if not exists doel_pw int not null default 0;
+-- v4: advertentieset-niveau in de Meta-stats (campagne=klant, set=functie, ad=hook)
+alter table mkt_meta_stats add column if not exists advertentieset text not null default '';
+alter table mkt_meta_stats drop constraint if exists mkt_meta_stats_datum_campagne_advertentie_key;
+do $$ begin
+  alter table mkt_meta_stats add constraint mkt_meta_stats_uniq unique (datum, campagne, advertentieset, advertentie);
+exception when duplicate_table then null; when duplicate_object then null; end $$;
 
 -- Besluiten van de advertentie-waakhond (Bryan beslist; app adviseert alleen)
 create table if not exists mkt_ad_besluiten (

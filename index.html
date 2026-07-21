@@ -749,13 +749,13 @@ function metaStatsHtml(){
   const cut = isoDaysAgo(30);
   const agg = {};
   state.meta.filter(r=>(r.datum||'')>=cut).forEach(r=>{
-    const k = (r.campagne||'—')+'|'+(r.advertentie||'—');
-    const a = agg[k] ??= { campagne:r.campagne||'—', advertentie:r.advertentie||'—', uitgegeven:0, impressies:0, kliks:0, leads:0 };
+    const k = (r.campagne||'—')+'|'+(r.advertentieset||'')+'|'+(r.advertentie||'—');
+    const a = agg[k] ??= { campagne:r.campagne||'—', advertentieset:r.advertentieset||'', advertentie:r.advertentie||'—', uitgegeven:0, impressies:0, kliks:0, leads:0 };
     a.uitgegeven+=Number(r.uitgegeven)||0; a.impressies+=Number(r.impressies)||0; a.kliks+=Number(r.kliks)||0; a.leads+=Number(r.leads)||0;
   });
   const rows = Object.values(agg).sort((a,b)=>b.uitgegeven-a.uitgegeven).map(a=>{
     const cpc = a.kliks? a.uitgegeven/a.kliks : 0, ctr = a.impressies? a.kliks/a.impressies*100 : 0, cpl = a.leads? a.uitgegeven/a.leads : 0;
-    return `<tr><td><b>${esc(a.campagne)}</b><br><small style="color:var(--muted)">${esc(a.advertentie)}</small></td>
+    return `<tr><td><b>${esc(a.campagne)}</b><br><small style="color:var(--muted)">${a.advertentieset?esc(a.advertentieset)+' › ':''}${esc(a.advertentie)}</small></td>
       <td class="rr">€${a.uitgegeven.toFixed(2)}</td><td class="rr">${fmtN(a.impressies)}</td><td class="rr">${fmtN(a.kliks)}</td>
       <td class="rr">€${cpc.toFixed(2)}</td><td class="rr">${ctr.toFixed(2)}%</td><td class="rr">${a.leads}</td>
       <td class="rr">${a.leads?'€'+cpl.toFixed(2):'—'}</td></tr>`;
@@ -899,20 +899,31 @@ async function adBevestig(id){
   const { error } = await sb.from('mkt_ad_besluiten').update({status:'bevestigd'}).eq('id', id);
   if (!error) { await loadFromDB(); render(); toast('✓ Stop bevestigd'); }
 }
-function autoStopActief(){
-  const c = state.besluiten.find(b=>b.advertentie==='__auto_stop__');
+function configActief(key){
+  const c = state.besluiten.find(b=>b.advertentie===key);
   return c?.besluit === 'aan';
 }
-async function toggleAutoStop(){
-  const naar = autoStopActief() ? 'uit' : 'aan';
-  if (naar==='aan' && !confirm('Auto-stop aanzetten?\n\nDe Claude-agent mag dan zelf advertenties PAUZEREN (nooit verwijderen of budgetten wijzigen) als ze duidelijk falen: geld op zonder leads, of kosten per lead ver boven jullie gemiddelde. Max 2 per dag, altijd met reden gelogd, en "negeer"-besluiten worden gerespecteerd.')) return;
+function autoStopActief(){ return configActief('__auto_stop__'); }
+function autoBudgetActief(){ return configActief('__auto_budget__'); }
+async function toggleConfig(key, vraagAan, meldingAan, meldingUit){
+  const naar = configActief(key) ? 'uit' : 'aan';
+  if (naar==='aan' && !confirm(vraagAan)) return;
   const { error } = await sb.from('mkt_ad_besluiten').insert({
-    advertentie:'__auto_stop__', campagne:'', besluit:naar, status:'config',
+    advertentie:key, campagne:'', besluit:naar, status:'config',
     door: currentProfile?.naam || currentUser?.email || ''
   });
   if (error) { toast('Opslaan mislukt'); return; }
   await loadFromDB(); render();
-  toast(naar==='aan' ? '🤖 Auto-stop AAN — de agent mag falende ads pauzeren' : 'Auto-stop UIT — de agent adviseert alleen nog');
+  toast(naar==='aan' ? meldingAan : meldingUit);
+}
+const toggleAutoStop = () => toggleConfig('__auto_stop__',
+  'Auto-stop aanzetten?\n\nDe Claude-agent mag dan zelf advertenties PAUZEREN (nooit verwijderen of budgetten wijzigen) als ze duidelijk falen: geld op zonder leads, of kosten per lead ver boven jullie gemiddelde. Max 2 per dag, altijd met reden gelogd, en "negeer"-besluiten worden gerespecteerd.',
+  '🤖 Auto-stop AAN — de agent mag falende ads pauzeren', 'Auto-stop UIT — de agent adviseert alleen nog');
+const toggleAutoBudget = () => toggleConfig('__auto_budget__',
+  'Auto-budget aanzetten?\n\nDe Claude-agent mag dan zelf dagbudgetten van advertentiesets aanpassen (bijschalen bij bewezen winnaars, afschalen bij verliezers). Vangrails: alleen sets met eigen budget (ABO), max ±30% per keer, minimaal €5/dag, maximaal 1 wijziging per set per 48 uur, en het TOTALE dagbudget van het account kan nooit stijgen — het plafond verhogen blijft mensenwerk. Alles wordt met reden gelogd.',
+  '💶 Auto-budget AAN — de agent mag herverdelen binnen het plafond', 'Auto-budget UIT — budget-adviezen zonder uitvoering');
+function agentAdviezen(){
+  return state.besluiten.filter(b=>['advies','budget'].includes(b.besluit) && b.status==='open' && !b.advertentie.startsWith('__'));
 }
 let _agentBusy = false;
 async function runAgent(){
@@ -942,16 +953,23 @@ function waakhondHtml(){
         if (act==='adsmanager') return `<a class="qbtn" href="${ADSMANAGER_URL}" target="_blank" style="text-decoration:none">↗ Open Ads Manager</a>`;
       }).join('')}
     </div></div>`;
-  const auto = autoStopActief();
+  const auto = autoStopActief(), autoB = autoBudgetActief();
+  const aanStijl = 'background:#e4f1e9;border-color:#a8d0b6;color:#1e6b3f';
+  const agentAdv = agentAdviezen();
+  const advKaart = b => `<div class="advies ${b.besluit==='budget'?'':'warn'}">
+    <b>${b.besluit==='budget'?'💶 Budget':'💡 Advies'}: ${esc(b.advertentie)}</b>
+    <small style="color:var(--muted)">${esc(b.campagne)} · ${(b.created_at||'').slice(0,10)}</small><br>${esc(b.note||'')}
+    <div style="margin-top:7px"><button class="qbtn" data-wh="bevestig|${b.id}|">✓ Gezien / afgehandeld</button></div>
+  </div>`;
   return `<div class="inzbox" style="grid-column:1/-1">
-    <h4 style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">🐕 Advertentie-waakhond
-      <span style="display:flex;gap:6px">
+    <h4 style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">🐕 Advertentie-waakhond & mediabuyer-agent
+      <span style="display:flex;gap:6px;flex-wrap:wrap">
         <button class="qbtn" id="agentrunbtn">🤖 Agent nu draaien</button>
-        <button class="qbtn" id="autostopbtn" style="${auto?'background:#e4f1e9;border-color:#a8d0b6;color:#1e6b3f':''}">${auto?'🤖 Auto-stop: AAN':'🤖 Auto-stop: uit'}</button>
+        <button class="qbtn" id="autostopbtn" style="${auto?aanStijl:''}">${auto?'⏸ Auto-stop: AAN':'⏸ Auto-stop: uit'}</button>
+        <button class="qbtn" id="autobudgetbtn" style="${autoB?aanStijl:''}">${autoB?'💶 Auto-budget: AAN':'💶 Auto-budget: uit'}</button>
       </span></h4>
-    <div class="toel">Kijkt elke dag na de sync naar alle lopende advertenties. Bij 🔴 en 🟡 kan Bryan stopzetten of laten lopen. ${auto
-      ? 'Auto-stop staat <b>AAN</b>: de Claude-agent pauzeert zelf advertenties die duidelijk falen (max 2/dag, alleen pauzeren, altijd met reden hieronder gelogd).'
-      : 'Auto-stop staat <b>uit</b>: de agent adviseert alleen; niets wordt automatisch gepauzeerd.'}</div>
+    <div class="toel">De agent analyseert na elke sync het hele account (campagne = klant → set = functie → hook), inclusief budgetverdeling en hooks die geen kans krijgen. ${auto?'Auto-stop <b>AAN</b>: falende ads worden zelf gepauzeerd.':'Auto-stop uit: stop-adviezen zonder uitvoering.'} ${autoB?'Auto-budget <b>AAN</b>: dagbudgetten worden herverdeeld binnen het plafond (±30%, nooit méér totaal).':'Auto-budget uit: budget-adviezen zonder uitvoering.'}</div>
+    ${agentAdv.length ? agentAdv.map(advKaart).join('') : ''}
     ${adviezen.length ? adviezen.map(kaart).join('') : '<div class="advies"><b>✅ Alles gezond</b>Geen advertentie die aandacht vraagt — alle lopende ads presteren binnen de normale marges.</div>'}
   </div>`;
 }
@@ -1046,6 +1064,7 @@ function renderPrestatie(){
   });
   el.querySelector('#agentrunbtn')?.addEventListener('click', runAgent);
   el.querySelector('#autostopbtn')?.addEventListener('click', toggleAutoStop);
+  el.querySelector('#autobudgetbtn')?.addEventListener('click', toggleAutoBudget);
   el.querySelectorAll('[data-rm]').forEach(b=>b.onclick=()=>remakePost(b.dataset.rm));
   el.querySelector('#lb_zoek').oninput = e => { _lbQ = e.target.value; document.getElementById('lb_lijst').innerHTML = learningsLijstHtml(); el.querySelectorAll('#lb_lijst [data-rm]').forEach(b=>b.onclick=()=>remakePost(b.dataset.rm)); };
   el.querySelector('#lb_kanaal').onchange = e => { _lbK = e.target.value; document.getElementById('lb_lijst').innerHTML = learningsLijstHtml(); el.querySelectorAll('#lb_lijst [data-rm]').forEach(b=>b.onclick=()=>remakePost(b.dataset.rm)); };
