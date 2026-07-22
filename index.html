@@ -299,6 +299,11 @@ nav.fases{position:sticky;top:0;z-index:4}
       <label class="fl" style="flex:1">Publicatiedatum<input type="date" id="f_datum"></label>
       <label class="fl" style="flex:1">Tijd<input type="time" id="f_tijd"></label>
     </div>
+    <div class="sectt">Media & automatisch publiceren</div>
+    <label class="fl">Foto of video (voor automatisch posten)<input type="file" id="f_media" accept="image/*,video/mp4,video/quicktime"></label>
+    <div class="utmout" id="f_mediaout"></div>
+    <label class="fl" style="flex-direction:row;align-items:center;gap:8px;cursor:pointer"><input type="checkbox" id="f_autopub" style="width:16px;height:16px"> <span>🚀 Automatisch publiceren op datum/tijd <small style="color:var(--muted)">(Facebook & Instagram)</small></span></label>
+    <div class="utmout" id="f_publog"></div>
     <div class="sectt">Meetbare link (UTM)</div>
     <div class="utmrow">
       <label class="fl">Doelpagina (waar stuur je mensen heen?)<input id="f_utmbase" placeholder="https://ploeggenoten.nl/…"></label>
@@ -443,6 +448,7 @@ function rowToPost(r){
   return {
     id:r.id, titel:r.titel||'', kanaal:r.kanaal||'', format:r.format||'', doel:r.doel||'',
     fase:r.fase||'Idee', campagne:r.campagne||'', vacature:r.vacature||'', utm:r.utm||'', hook:r.hook||'', script:r.script||'',
+    mediaUrl:r.media_url||'', autoPublish:!!r.auto_publish, publiceerLog:r.publiceer_log||'',
     datum:r.publicatie_datum||'', tijd:r.publicatie_tijd||'', link:r.link||'',
     resultaat:(r.resultaat&&typeof r.resultaat==='object')?r.resultaat:{},
     learnings:r.learnings||'', notities:Array.isArray(r.notities)?r.notities:[],
@@ -453,6 +459,7 @@ function postToRow(p){
   return {
     id:p.id, titel:p.titel, kanaal:p.kanaal||'', format:p.format||'', doel:p.doel||'',
     fase:p.fase, campagne:p.campagne||'', vacature:p.vacature||'', utm:p.utm||'', hook:p.hook||'', script:p.script||'',
+    media_url:p.mediaUrl||'', auto_publish:!!p.autoPublish,
     publicatie_datum:p.datum||null, publicatie_tijd:p.tijd||'', link:p.link||'',
     resultaat:p.resultaat||{}, learnings:p.learnings||'', notities:p.notities||[]
   };
@@ -534,7 +541,7 @@ function cardHtml(p){
       else if (p.datum < today) cls = 'gemist';
       else { const d2=new Date(); d2.setDate(d2.getDate()+2); cls = p.datum <= d2.toISOString().slice(0,10) ? 'soon' : 'ok'; }
     }
-    when = `<div class="when ${cls}">${p.fase==='Ingepland'?'📅':'✔'} ${fmtD(p.datum)}${p.tijd?' · '+p.tijd.slice(0,5):''}</div>`;
+    when = `<div class="when ${cls}">${p.fase==='Ingepland'?(p.autoPublish?'🚀':'📅'):'✔'} ${fmtD(p.datum)}${p.tijd?' · '+p.tijd.slice(0,5):''}</div>`;
   }
   const r = p.resultaat || {};
   const res = (p.fase==='Gepubliceerd'||p.fase==='Learnings') && (r.bereik||r.likes||r.leads||r.reacties)
@@ -1121,6 +1128,8 @@ function dagstartHtml(){
     items.push({ico:'📤', txt:`Publiceren vandaag${p.tijd?' om '+p.tijd.slice(0,5):''}: <b>${esc(p.titel)}</b> (${esc(p.kanaal)})`, open:p.id}));
   P.filter(p=>p.fase==='Ingepland' && p.datum && p.datum<today).forEach(p=>
     items.push({ico:'⏰', txt:`Over datum (${fmtD(p.datum)}): <b>${esc(p.titel)}</b> — publiceren of verzetten`, open:p.id, rood:true}));
+  P.filter(p=>(p.publiceerLog||'').startsWith('⚠')).forEach(p=>
+    items.push({ico:'🚀', txt:`Automatisch publiceren mislukt: <b>${esc(p.titel)}</b> — ${esc(p.publiceerLog.slice(2,90))}`, open:p.id, rood:true}));
   P.filter(p=>PUB(p) && p.datum && p.datum<=isoDaysAgo(3) && !(Number(p.resultaat?.bereik)>0)).slice(0,3).forEach(p=>
     items.push({ico:'📊', txt:`Resultaten invullen: <b>${esc(p.titel)}</b>`, open:p.id}));
   const wh = adWaakhond().filter(a=>a.sev==='rood').length;
@@ -1241,7 +1250,7 @@ function renderPlanning(){
   <div class="inzgrid">
     <div class="inzbox"><h4>📅 Agenda — ingepland (${gepland.length})</h4>
       ${gemist.length?`<div class="advies rood"><b>⏰ ${gemist.length} over datum</b>Publiceer alsnog of kies een nieuwe datum.</div>`:''}
-      ${gepland.map(p=>`<div class="planrow${p.datum&&p.datum<today?' gemist':''}" data-open="${p.id}" style="cursor:pointer"><span class="pd">${fmtD(p.datum)||'—'}${p.tijd?' '+p.tijd.slice(0,5):''}</span><span class="kdot" style="background:${kanaalKleur(p.kanaal)}"></span><span class="pt">${esc(p.titel)}</span><button class="qbtn" data-q="${p.id}|Gepubliceerd">✔</button></div>`).join('') || '<div class="toel" style="margin:0">Niets ingepland — plan vanuit de kalender of Content Creatie.</div>'}
+      ${gepland.map(p=>`<div class="planrow${p.datum&&p.datum<today?' gemist':''}" data-open="${p.id}" style="cursor:pointer"><span class="pd">${fmtD(p.datum)||'—'}${p.tijd?' '+p.tijd.slice(0,5):''}</span><span class="kdot" style="background:${kanaalKleur(p.kanaal)}"></span><span class="pt">${p.autoPublish?'🚀 ':''}${esc(p.titel)}</span>${p.autoPublish?'<small style="color:var(--muted)">auto</small>':`<button class="qbtn" data-q="${p.id}|Gepubliceerd">✔</button>`}</div>`).join('') || '<div class="toel" style="margin:0">Niets ingepland — plan vanuit de kalender of Content Creatie.</div>'}
     </div>
     <div class="inzbox"><h4>✔ Recent gepubliceerd</h4>
       ${recent.map(p=>`<div class="planrow" data-open="${p.id}" style="cursor:pointer"><span class="pd">${fmtD(p.datum)||'—'}</span><span class="kdot" style="background:${kanaalKleur(p.kanaal)}"></span><span class="pt">${esc(p.titel)}</span>${Number(p.resultaat?.bereik)>0?`<small style="color:var(--muted)">👁 ${fmtN(p.resultaat.bereik)}</small>`:'<small style="color:#a86a1a">📊 resultaten?</small>'}</div>`).join('') || '<div class="toel" style="margin:0">Nog niets gepubliceerd.</div>'}
@@ -1293,6 +1302,16 @@ function openEdit(id, preset={}){
   uo.textContent = p?.utm || ''; uo.style.display = p?.utm ? 'block' : 'none';
   v('f_wanr', localStorage.getItem('mkt_wanr') || '');
   const wo = document.getElementById('f_waout'); wo.textContent=''; wo.style.display='none';
+  _mediaUrl = p?.mediaUrl || '';
+  document.getElementById('f_media').value = '';
+  const mo = document.getElementById('f_mediaout');
+  mo.innerHTML = _mediaUrl ? `📎 <a href="${esc(_mediaUrl)}" target="_blank">media bekijken</a>` : '';
+  mo.style.display = _mediaUrl ? 'block' : 'none';
+  document.getElementById('f_autopub').checked = !!p?.autoPublish;
+  const pl = document.getElementById('f_publog');
+  pl.textContent = p?.publiceerLog || '';
+  pl.style.display = p?.publiceerLog ? 'block' : 'none';
+  pl.style.color = (p?.publiceerLog||'').startsWith('⚠') ? 'var(--red)' : '';
   updateChecklist();
   v('f_datum', preset.datum ?? p?.datum ?? ''); v('f_tijd', p?.tijd?.slice(0,5));
   v('f_link', p?.link);
@@ -1330,6 +1349,23 @@ function updateChecklist(){
   document.getElementById(id).addEventListener('change', updateChecklist);
 });
 
+// Media-upload naar Supabase Storage (openbare bucket 'media')
+let _mediaUrl = '';
+document.getElementById('f_media').onchange = async (e) => {
+  const file = e.target.files?.[0];
+  if (!file) return;
+  if (file.size > 300*1024*1024) { toast('Bestand te groot (max ~300MB)'); return; }
+  toast('⬆️ Uploaden…');
+  const pad = `${Date.now()}_${file.name.replace(/[^a-zA-Z0-9._-]/g,'_')}`;
+  const { error } = await sb.storage.from('media').upload(pad, file, { upsert: false });
+  if (error) { toast('Upload mislukt: ' + error.message); return; }
+  _mediaUrl = sb.storage.from('media').getPublicUrl(pad).data.publicUrl;
+  const mo = document.getElementById('f_mediaout');
+  mo.innerHTML = `📎 <a href="${esc(_mediaUrl)}" target="_blank">media bekijken</a>`;
+  mo.style.display = 'block';
+  toast('✓ Media geüpload');
+};
+
 document.getElementById('f_wagen').onclick = () => {
   let nr = document.getElementById('f_wanr').value.replace(/[^0-9]/g,'');
   if (!nr) { toast('Vul een WhatsApp-nummer in (bijv. 316…)'); return; }
@@ -1360,6 +1396,14 @@ document.getElementById('f_save').onclick = async () => {
   const datum = g('f_datum');
   if ((fase==='Ingepland') && !datum) { toast('Publicatiedatum is verplicht bij Ingepland'); return; }
   if (fase==='Learnings' && !g('f_learnings')) { toast('Vul je learnings in bij deze fase'); return; }
+  const autoPub = document.getElementById('f_autopub').checked;
+  if (autoPub) {
+    const kan = g('f_kanaal');
+    if (!['Facebook','Instagram'].includes(kan)) { toast('🚀 Automatisch publiceren kan alleen op Facebook of Instagram'); return; }
+    if (!datum) { toast('🚀 vergt een publicatiedatum'); return; }
+    if (kan==='Instagram' && !_mediaUrl) { toast('Instagram vereist een foto of video — upload eerst media'); return; }
+    if (!document.getElementById('f_script').value.trim() && !_mediaUrl) { toast('Niets om te publiceren: vul een caption of upload media'); return; }
+  }
   const p = editId ? state.posts.find(x=>x.id===editId) : {
     id:'m'+Date.now()+Math.random().toString(36).slice(2,6), notities:[], resultaat:{}, createdAt:new Date().toISOString()
   };
@@ -1373,6 +1417,7 @@ document.getElementById('f_save').onclick = async () => {
     reacties:Number(g('f_reacties'))||0, leads:Number(g('f_leads'))||0
   };
   p.learnings = g('f_learnings');
+  p.mediaUrl = _mediaUrl; p.autoPublish = autoPub;
   const note = g('f_note');
   if (note) p.notities = [...(p.notities||[]), { t:new Date().toISOString(), wie: currentProfile?.naam || currentUser?.email || '', txt: note }];
   if (!editId) state.posts.push(p);
