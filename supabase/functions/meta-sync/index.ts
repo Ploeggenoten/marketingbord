@@ -95,7 +95,46 @@ Deno.serve(async (req) => {
         .upsert(rows, { onConflict: "datum,campagne,advertentieset,advertentie" });
       if (error) return json({ error: "opslaan mislukt: " + error.message }, 500);
     }
-    return json({ ok: true, regels: rows.length, account });
+
+    // ── organisch: Facebook-pagina-posts → resultaten van bord-posts ──
+    // (vergt pages_show_list + pages_read_engagement + pagina toegewezen aan de
+    //  systeemgebruiker; faalt stil zodat de advertentie-sync nooit meelijdt)
+    let organisch = 0;
+    try {
+      const paginas = await (await fetch(`${GRAPH}/me/accounts?fields=id,name,access_token&access_token=${encodeURIComponent(token)}`)).json();
+      const sinds = new Date(); sinds.setDate(sinds.getDate() - 30);
+      const { data: bordPosts } = await db.from("mkt_posts").select("*")
+        .in("fase", ["Gepubliceerd", "Learnings"]).eq("kanaal", "Facebook")
+        .gte("publicatie_datum", sinds.toISOString().slice(0, 10));
+      if (bordPosts?.length && paginas.data?.length) {
+        for (const pagina of paginas.data) {
+          const fb = await (await fetch(`${GRAPH}/${pagina.id}/posts?fields=id,created_time,permalink_url,reactions.summary(true),comments.summary(true),insights.metric(post_impressions_unique)&since=${sinds.toISOString().slice(0, 10)}&limit=100&access_token=${encodeURIComponent(pagina.access_token)}`)).json();
+          for (const fp of fb.data ?? []) {
+            const fpDatum = (fp.created_time || "").slice(0, 10);
+            const postId = (fp.id || "").split("_")[1] || fp.id;
+            // match: (1) bord-link bevat het post-id, anders (2) enige kandidaat op dezelfde dag
+            let doel = bordPosts.find((b: { link?: string }) => b.link && postId && b.link.includes(postId));
+            if (!doel) {
+              const zelfdeDag = bordPosts.filter((b: { publicatie_datum?: string; link?: string }) => b.publicatie_datum === fpDatum && !b.link);
+              if (zelfdeDag.length === 1) doel = zelfdeDag[0];
+            }
+            if (!doel) continue;
+            const bereik = fp.insights?.data?.find((m: { name: string }) => m.name === "post_impressions_unique")?.values?.[0]?.value ?? 0;
+            const resultaat = { ...(doel.resultaat || {}),
+              bereik: Number(bereik) || doel.resultaat?.bereik || 0,
+              likes: fp.reactions?.summary?.total_count ?? doel.resultaat?.likes ?? 0,
+              reacties: fp.comments?.summary?.total_count ?? doel.resultaat?.reacties ?? 0,
+            };
+            const upd: Record<string, unknown> = { resultaat };
+            if (!doel.link && fp.permalink_url) upd.link = fp.permalink_url;
+            const { error: ue } = await db.from("mkt_posts").update(upd).eq("id", doel.id);
+            if (!ue) { organisch++; doel.link = doel.link || fp.permalink_url; doel.resultaat = resultaat; }
+          }
+        }
+      }
+    } catch (_e) { /* organisch is best-effort */ }
+
+    return json({ ok: true, regels: rows.length, organisch, account });
   } catch (e) {
     return json({ error: String(e) }, 500);
   }
