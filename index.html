@@ -43,6 +43,10 @@ nav.fases{background:#20301a;border-bottom:1px solid #33421f;padding:0 18px;disp
 .inspstrip{display:flex;gap:10px;overflow-x:auto;padding-bottom:4px}
 .inspkaart{flex:0 0 250px;background:#fff;border:1px solid var(--line);border-radius:12px;padding:11px 13px;display:flex;flex-direction:column;gap:7px}
 .inspkaart.gat{border-color:#e0be80;background:#fdf8ec}
+.inspkaart.viraal{flex-basis:270px;border-color:#f0c9a0;background:#fffaf3}
+.vsrc{font-size:11px;color:#a06a28;font-weight:600}
+.spieklijst{margin-top:8px;font-size:12.5px;line-height:1.9}
+.spieklijst a{color:#3a5416;font-weight:600}
 .inspkaart .it2{font-weight:600;font-size:13.5px;line-height:1.3}
 .inspkaart .ih2{font-size:12px;color:#2f6a8a;font-style:italic;flex:1}
 .inspkaart .gebruik{align-self:flex-start;background:var(--glove);color:#fff;border:none;border-radius:7px;font-size:12px;font-weight:600;padding:6px 12px;cursor:pointer}
@@ -1355,6 +1359,7 @@ function renderCreatie(){
   const scripts = P.filter(p=>p.fase==='Script klaar').sort((a,b)=>(b._updatedAt||b.createdAt||'').localeCompare(a._updatedAt||a.createdAt||''));
   const rw = runway();
   if (!_comp.insp.length) rolInspiratie();
+  if (!_afk.length) rolAfkijk();
   const kchips = state.kanalen.map(k=>`<span class="kchip${_comp.kanaal===k.naam?' on':''}" data-kc="${esc(k.naam)}" style="--kc:${k.kleur}"><span class="kdot" style="background:${_comp.kanaal===k.naam?'#fff':k.kleur}"></span>${esc(k.naam)}</span>`).join('');
   const st = postStreak();
   el.innerHTML = `
@@ -1392,6 +1397,21 @@ function renderCreatie(){
         <button class="gebruik" data-insp="${ix}">→ gebruik</button>
       </div>`).join('')}
     </div>
+  </div>
+  <div class="inzbox"><h4 style="display:flex;justify-content:space-between;align-items:center">🔥 Afkijken — dit gaat nu viraal bij andere bedrijven <button class="qbtn" id="afk_rol">↻ andere</button></h4>
+    <div class="toel" style="margin:0 0 10px">De formule achter bijna elke bedrijfsviral: <b>trend van de week × echte collega's × zelfspot</b>. Gewoon op je telefoon gefilmd is juist goed.</div>
+    <div class="inspstrip">${_afk.map((a,ix)=>`
+      <div class="inspkaart viraal">
+        <div class="it2">🔥 ${esc(a.t)}</div>
+        <div class="vsrc">👀 ${esc(a.v)}</div>
+        <div class="ih2">${esc(a.i)}</div>
+        <div class="ih2" style="font-style:italic">"${esc(a.h)}"</div>
+        <button class="gebruik" data-afk="${ix}">→ gebruik</button>
+      </div>`).join('')}
+    </div>
+    <details class="spieklijst"><summary style="cursor:pointer;font-weight:700;font-size:12.5px">🔭 Waar spiek je elke week?</summary>
+      ${SPIEKLIJST.map(s=>`<div>• <a href="${esc(s.u)}" target="_blank" rel="noopener">${esc(s.w)}</a> — ${esc(s.x)}</div>`).join('')}
+    </details>
   </div>
   <div class="inzbox"><h4>🎬 Filmdag voorbereiden — scripts per functie</h4>
     <div class="toel" style="margin:0 0 10px">Gaan jullie filmen? Zet per functie meerdere hooks klaar, zodat je op de set niets hoeft te verzinnen. Elke hook wordt een scriptkaart hieronder bij "Script klaar".</div>
@@ -1445,6 +1465,8 @@ function renderCreatie(){
   el.querySelector('#c_video').onclick = () => { openEdit(null, {}); document.getElementById('f_format').value='Reel / video'; insertVideoTemplate(); };
   el.querySelector('#insp_rol').onclick = () => { _comp.tekst = document.getElementById('c_tekst').value; rolInspiratie(); render(); };
   el.querySelectorAll('[data-insp]').forEach(b=>b.onclick=()=>composerVul(_comp.insp[+b.dataset.insp]));
+  el.querySelector('#afk_rol').onclick = () => { _comp.tekst = document.getElementById('c_tekst').value; rolAfkijk(); render(); };
+  el.querySelectorAll('[data-afk]').forEach(b=>b.onclick=()=>{ const a=_afk[+b.dataset.afk]; composerVul({titel:a.t, hook:a.h}); });
   el.querySelector('#th_edit').onclick = () => {
     document.getElementById('th_tekst').value = themas().join('\n');
     document.getElementById('thscrim').classList.add('open');
@@ -1830,6 +1852,34 @@ const IDEEENBANK = [
   {t:'Achter de schermen: zo ziet de werkvloer er écht uit', f:'Story', d:'Employer branding', h:'Geen stockfoto\'s. Dit is het echt.'},
   {t:'5 vragen die jij mag stellen in je sollicitatiegesprek', f:'Carousel', d:'Kandidaten werven', h:'Een gesprek is tweerichtingsverkeer.'},
 ];
+// ── AFKIJKBANK: virale team-formats van andere bedrijven (web-research 27 jul 2026) ──
+const AFKIJKBANK = [
+  {t:'Jongerentaal-script: de voorman leest voor', v:'Currys (UK) — 1,9 mln views', i:'Jongste collega schrijft de tekst vol internettaal, de oudste leest hem bloedserieus voor tijdens een rondleiding.', h:'Onze voorman (55) legt uit waarom dit magazijn een 10/10 is — in de woorden van onze jongste collega.'},
+  {t:'De baas doet één keer mee met een trend', v:'vanHaren — manager Ferry gaat er steeds mee viraal', i:'Hoe stijver de leidinggevende, hoe beter. Eén take, niet te netjes gefilmd.', h:'We vroegen de ploegbaas of hij héél even mee wilde doen. Hij zei: één keer dan.'},
+  {t:'Welke collega ben jij?', v:'TikTok-klassieker — iedereen herkent zichzelf', i:'Vier tot zes herkenbare types, elk 2-3 seconden in beeld. Mensen sturen hem naar elkaar door.', h:'Elke ploeg heeft ze: de heftruck-koning, de scanner-kwijtraker, de klaarstaander om 14:59. Welke ben jij?'},
+  {t:'We luisteren en we oordelen niet', v:'wereldwijde trend, ook mét de baas erbij', i:'Team op een rij, iedereen bekent om de beurt iets kleins, niemand mag reageren.', h:'We luisteren en we oordelen niet — de nachtploeg-editie.'},
+  {t:'POV: jij op de werkvloer', v:'#warehouseworker zit er vol mee', i:'De camera is de kijker. Eén situatie, één grap, tien seconden.', h:'POV: het is je eerste dag en je weet nog niet dat Henk altijd de goede steekwagen inpikt.'},
+  {t:'Dag uit het leven — mét loon', v:'Werken bij Picnic doet dit structureel', i:'Van wekker tot einde dienst. Het loon noemen is dé reactie-magneet.', h:'Meelopen met Kevin (22), orderpicker. Dit is zijn dinsdag — inclusief wat hij verdient.'},
+  {t:'Expres foute reclame (marktkoopman-stijl)', v:'De Beren deed dit voor vacatures', i:'Schreeuwerig, knipperende teksten, zo fout dat het goed is. Valt op tussen gelikte content.', h:'HEFTRUCKCHAUFFEURS!!! €17 PER UUR!!! VANDAAG BELLEN = MORGEN WERKEN!!!'},
+  {t:'Welk geluid maakt die machine?', v:'trend van nú (juli 2026)', i:'Collega\'s doen vol overtuiging het geluid na, dan hoor je het echte apparaat.', h:'Wij vroegen de ploeg: welk geluid maakt de heftruck als hij achteruit rijdt?'},
+  {t:'Netflix-documentaire over iets kleins', v:'trend van nú (juli 2026)', i:'Interview-opstelling en serieuze muziek, over iets totaal onbenulligs.', h:'AFLEVERING 1: De verdwenen pompwagen. Niemand weet waar pompwagen 3 is gebleven. Tot nu.'},
+  {t:'Trending geluid + jouw werkvloer', v:'de motor achter bijna elke bedrijfsviral', i:'Pak het geluid van deze week en plak er één werksituatie op. Binnen 1-3 dagen posten, anders is de trend voorbij.', h:'Pak het trending geluid van deze week: welke situatie uit ons magazijn past hierop?'},
+  {t:'Voor/na op de beat', v:'werkt al jaren, elke keer weer', i:'Begin van de dienst → einde nachtdienst, precies gecut op de muziek.', h:'06:00 vs 14:30 — wat 8 uur ploegendienst met een mens doet.'},
+  {t:'Bloopers: de mislukte takes', v:'Duits installatiebedrijf haalde er miljoenen views mee', i:'Lachen is besmettelijk en bewijst échte sfeer. Post de nette versie een dag later.', h:'We wilden een serieuze vacaturevideo maken. Dit werd het.'},
+  {t:'Drie ploegen, één dag', v:'trend van nú (juli 2026)', i:'Ochtend-, middag- en nachtploeg maken elk uur één foto; naast elkaar gemonteerd.', h:'Zelfde bedrijf, drie totaal verschillende levens. Welke ploeg past bij jou?'},
+  {t:'Eerlijk over het werk — ook de mindere kanten', v:'grote trend sinds begin 2026', i:'Eerlijkheid over de nadelen maakt de voordelen geloofwaardig.', h:'Drie dingen die niemand je vertelt over magazijnwerk — en waarom ik tóch blijf.'},
+  {t:'Microfoon de ploeg in', v:'"I asked my coworkers" — oneindig herhaalbaar', i:'Eén simpele vraag, vijf tot acht snelle antwoorden. Geldvragen scoren het best.', h:'We vroegen de ploeg: wat deed jij met je allereerste loonstrook?'},
+];
+const SPIEKLIJST = [
+  {w:'TikTok Creative Center', u:'https://ads.tiktok.com/business/creativecenter/inspiration/popular/hashtag', x:'trending hashtags & geluiden, filter op Nederland — dé wekelijkse check'},
+  {w:'Volg met een kijk-account', u:'https://www.tiktok.com/@werkenbijpicnic', x:'@werkenbijpicnic · @ryanair · @vanharen_schoenen · @postnl — wat zij posten is je gratis formatkalender'},
+  {w:'15 min/week scrollen', u:'https://www.tiktok.com/tag/werkenbij', x:'#magazijn #heftruck #werkenbij #nachtdienst #warehouseworker — bewaar alles met 100k+ views dat jonger is dan 2 weken'},
+  {w:'Maandelijkse trendlijst', u:'https://newengen.com/insights/july-tiktok-trends/', x:'elke maand nieuwe formats uitgelegd met voorbeelden'},
+  {w:'Werf& (NL recruitment-cases)', u:'https://www.werf-en.nl/', x:'welke werken-bij-content in Nederland werkt'},
+];
+let _afk = [];
+function rolAfkijk(){ _afk = [...AFKIJKBANK].sort(()=>Math.random()-.5).slice(0,4); }
+
 let _ideeSet = [];
 function rollIdeeen(){
   const shuffled = [...IDEEENBANK].sort(()=>Math.random()-.5);
