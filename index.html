@@ -29,6 +29,28 @@ nav.fases{background:#20301a;border-bottom:1px solid #33421f;padding:0 18px;disp
 .fasechip{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;padding:2px 8px;border-radius:999px;color:#fff;background:var(--fc,#9aa3b2)}
 .qbtn{border:1px solid var(--line);background:#f4f6ee;color:#2a3618;border-radius:7px;font-size:11.5px;font-weight:600;padding:4px 9px;cursor:pointer}
 .qbtn:hover{background:#e9eddc}
+/* ── STUDIO (Content Creatie) ── */
+.studio{background:linear-gradient(135deg,#fbfcf8,#f2f6e8);border:2px solid #c4d09a}
+.studio textarea{width:100%;min-height:96px;border:1px solid var(--line);border-radius:10px;padding:12px 14px;font-size:15px;font-family:var(--body);resize:vertical;background:#fff}
+.studiorow{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:10px}
+.kchip{border:1.5px solid var(--line);background:#fff;border-radius:999px;padding:7px 14px;font-size:13px;font-weight:600;cursor:pointer;display:inline-flex;gap:6px;align-items:center;color:var(--txt)}
+.kchip.on{border-color:var(--kc,#3d6400);background:var(--kc,#3d6400);color:#fff}
+.studio input[type=date],.studio input[type=time]{border:1px solid var(--line);border-radius:8px;padding:8px 10px;background:#fff;font-size:13px}
+.chkmini{display:flex;gap:10px;flex-wrap:wrap;font-size:11.5px;margin-top:7px;color:var(--muted)}
+.chkmini .ok{color:#1e6b3f;font-weight:600}
+.medianame{font-size:12px;color:#2f6a8a;font-weight:600}
+/* inspiratie-strook */
+.inspstrip{display:flex;gap:10px;overflow-x:auto;padding-bottom:4px}
+.inspkaart{flex:0 0 250px;background:#fff;border:1px solid var(--line);border-radius:12px;padding:11px 13px;display:flex;flex-direction:column;gap:7px}
+.inspkaart.gat{border-color:#e0be80;background:#fdf8ec}
+.inspkaart .it2{font-weight:600;font-size:13.5px;line-height:1.3}
+.inspkaart .ih2{font-size:12px;color:#2f6a8a;font-style:italic;flex:1}
+.inspkaart .gebruik{align-self:flex-start;background:var(--glove);color:#fff;border:none;border-radius:7px;font-size:12px;font-weight:600;padding:6px 12px;cursor:pointer}
+/* werkvoorraad twee kolommen */
+.wvgrid{display:grid;grid-template-columns:1fr 1fr;gap:12px;align-items:start}
+@media(max-width:860px){.wvgrid{grid-template-columns:1fr}}
+.wvkop{font-family:var(--disp);font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:var(--steel);margin:0 0 8px;display:flex;justify-content:space-between;align-items:center}
+.wvkop .count{background:#e2e6d6;color:#3a4526;font-size:12px}
 /* ── PRESTATIE ── */
 .metatable td,.metatable th{white-space:nowrap}
 .activatie{border:2px dashed #c4d09a;border-radius:12px;padding:18px;text-align:center;color:var(--muted);font-size:13.5px;line-height:1.6;background:#fbfcf5}
@@ -1160,49 +1182,138 @@ async function remakePost(id){
 }
 
 // ─── VIEW 2: CONTENT CREATIE ────────────────────────────────────
+// ── Composer-status (het snel-posten-blok bovenaan Creatie) ──
+let _comp = { media:'', vacature:'', kanaal:'', tekst:'', insp:[] };
+function rolInspiratie(){
+  const gaten = vacatureRadar().slice(0,2).map(x=>({ soort:'gat', titel:`${x.key} zoekt nog kandidaten`, hook:`Nog geen content voor deze vacature${x.dgnOpen!=null?` (al ${x.dgnOpen} dgn open)`:''} — dé kans voor een post.`, vacature:x.key, kanaal:'' }));
+  const ideeen = [...IDEEENBANK].sort(()=>Math.random()-.5).slice(0,4).map(i=>({ soort:'idee', titel:i.t, hook:i.h, format:i.f, doel:i.d, kanaal:'' }));
+  _comp.insp = [...gaten, ...ideeen];
+}
+function composerChecklist(){
+  const t = document.getElementById('c_tekst')?.value || '';
+  const items = [
+    { ok:/€|\b(salaris|verdien|bruto|toeslag)\b/i.test(t), lbl:'salaris/€ genoemd' },
+    { ok:t.trim().length>0 && t.trim().length<=400, lbl:'lekker kort' },
+    { ok:!!_comp.media, lbl:'foto/video erbij' },
+    { ok:!BAIT_RE.some(([re])=>re.test(t)), lbl:'geen "tag iemand"-taal' },
+  ];
+  const elc = document.getElementById('c_check');
+  if (elc) elc.innerHTML = items.map(i=>`<span class="${i.ok?'ok':''}">${i.ok?'✓':'○'} ${i.lbl}</span>`).join('');
+}
+async function composerSave(inplannen){
+  const tekst = document.getElementById('c_tekst').value.trim();
+  const kanaal = _comp.kanaal;
+  if (!tekst && !_comp.media) { toast('Schrijf eerst een caption of upload media'); return; }
+  if (!kanaal) { toast('Kies een kanaal (klik op een van de rondjes)'); return; }
+  let datum = document.getElementById('c_datum').value;
+  let tijd = document.getElementById('c_tijd').value;
+  let fase = 'Idee', autoPub = false;
+  if (inplannen) {
+    if (!datum) datum = todayISO();
+    if (!tijd) { const d = new Date(Date.now()+3600e3); tijd = String(d.getHours()).padStart(2,'0')+':00'; }
+    fase = 'Ingepland';
+    autoPub = ['Facebook','Instagram'].includes(kanaal);
+    if (kanaal==='Instagram' && !_comp.media) { toast('Instagram vereist een foto of video'); return; }
+  }
+  const titel = tekst ? (tekst.split('\n')[0].split(/\s+/).slice(0,7).join(' ').slice(0,60)) : ('Post ' + fmtD(datum||todayISO()));
+  const p = { id:'m'+Date.now()+Math.random().toString(36).slice(2,6),
+    titel, kanaal, format: _comp.media ? (/\.(mp4|mov|m4v|webm)/i.test(_comp.media)?'Reel / video':'Foto + tekst') : 'Tekstpost',
+    doel:'Kandidaten werven', fase, campagne:'', vacature:_comp.vacature, utm:'', hook:tekst.split('\n')[0].slice(0,120), script:tekst,
+    datum: inplannen?datum:'', tijd: inplannen?tijd:'', link:'', mediaUrl:_comp.media, autoPublish:autoPub, publiceerLog:'',
+    resultaat:{}, learnings:'', notities:[], createdAt:new Date().toISOString(), _updatedAt:new Date().toISOString() };
+  state.posts.push(p);
+  _comp = { ..._comp, media:'', vacature:'', tekst:'' };
+  render();
+  await upsertPost(p);
+  toast(inplannen ? (autoPub ? `🚀 Ingepland — gaat ${fmtD(datum)} om ${tijd} automatisch live op ${kanaal}` : `📅 Ingepland voor ${fmtD(datum)} — ${kanaal} posten doe je zelf (auto kan alleen FB/IG)`) : '💾 Bewaard als idee');
+}
+function composerVul(item){
+  _comp.vacature = item.vacature || '';
+  if (item.kanaal) _comp.kanaal = item.kanaal;
+  const t = document.getElementById('c_tekst');
+  t.value = item.soort==='gat' ? `` : (item.hook + '\n\n');
+  if (item.soort==='gat') t.placeholder = `Schrijf een post voor ${item.vacature}…`;
+  t.focus();
+  composerChecklist();
+  window.scrollTo({top:0, behavior:'smooth'});
+  toast(item.soort==='gat' ? `📌 Gekoppeld aan ${item.vacature}` : '✨ Hook staat klaar — maak hem af');
+}
+
 function renderCreatie(){
   const el = document.getElementById('creatie');
   const P = filtered();
-  const items = P.filter(p=>p.fase==='Idee'||p.fase==='Script klaar')
-    .sort((a,b)=>(b._updatedAt||b.createdAt||'').localeCompare(a._updatedAt||a.createdAt||''));
-  const radar = vacatureRadar();
+  const ideeen = P.filter(p=>p.fase==='Idee').sort((a,b)=>(b._updatedAt||b.createdAt||'').localeCompare(a._updatedAt||a.createdAt||''));
+  const scripts = P.filter(p=>p.fase==='Script klaar').sort((a,b)=>(b._updatedAt||b.createdAt||'').localeCompare(a._updatedAt||a.createdAt||''));
   const rw = runway();
+  if (!_comp.insp.length) rolInspiratie();
+  const kchips = state.kanalen.map(k=>`<span class="kchip${_comp.kanaal===k.naam?' on':''}" data-kc="${esc(k.naam)}" style="--kc:${k.kleur}"><span class="kdot" style="background:${_comp.kanaal===k.naam?'#fff':k.kleur}"></span>${esc(k.naam)}</span>`).join('');
   el.innerHTML = `
   ${dagstartHtml()}
-  <div class="cre-actions">
-    <button class="bigbtn" id="cre_nieuw">+ Nieuw idee / post</button>
-    <button class="bigbtn" id="cre_video">🎬 Nieuw videoscript</button>
-    <button class="bigbtn sec" id="cre_inspiratie">🎲 Inspiratie</button>
-  </div>
-  <div class="cregrid">
-    <div style="display:flex;flex-direction:column;gap:12px">
-      <div class="inzbox"><h4>⏳ Voorraad & tempo</h4>
-        <div class="big">${rw.weken===null ? (rw.voorraad+rw.gepland) : (rw.weken>=9 ? '9+ wkn' : rw.weken.toFixed(1)+' wkn')}</div>
-        <div class="sub">${rw.voorraad} in de maak + ${rw.gepland} ingepland${rw.tempoWk?` · tempo ${rw.tempoWk.toFixed(1)}/wk`:''}</div>
-        ${rw.weken!==null && rw.weken<2 ? `<div class="advies rood" style="margin-top:10px"><b>🔥 Voorraad bijna droog</b>Binnen ${Math.ceil(rw.weken*7)} dagen zonder content — gebruik 🎲 Inspiratie of de radar hieronder.</div>`:''}
-      </div>
-      <div class="inzbox"><h4>📌 Waar content nodig is</h4>
-        <div class="toel">Open vacatures van het pijplijnbord zonder recente of geplande content.</div>
-        ${radar.length ? radar.slice(0,8).map(x=>`<div class="gapviz"><div class="gv"><b>${esc(x.key)}</b><small>${x.dgnOpen!=null?x.dgnOpen+' dgn open · ':''}${x.nContent} post${x.nContent===1?'':'s'} ooit</small></div><button class="gapbtn" data-vacpost="${esc(x.key)}">→ maak</button></div>`).join('')
-          : `<div class="toel" style="margin:0">✅ Elke open vacature is gedekt.</div>`}
-      </div>
+  <div class="inzbox studio"><h4>✍️ Nieuwe post — schrijven, kiezen, klaar</h4>
+    <textarea id="c_tekst" placeholder="Wat wil je posten? Schrijf hier je tekst… (tip: noem het salaris in de eerste zin)">${esc(_comp.tekst||'')}</textarea>
+    <div class="chkmini" id="c_check"></div>
+    ${_comp.vacature?`<div style="margin-top:7px"><span class="tag doel">📌 ${esc(_comp.vacature)}</span></div>`:''}
+    <div class="studiorow">${kchips}</div>
+    <div class="studiorow">
+      <button class="qbtn" id="c_mediabtn">📎 Foto/video toevoegen</button>
+      <span class="medianame" id="c_medianame">${_comp.media?'✓ media toegevoegd':''}</span>
+      <input type="file" id="c_media" accept="image/*,video/mp4,video/quicktime" style="display:none">
+      <span style="flex:1"></span>
+      <input type="date" id="c_datum" value="${todayISO()}"> <input type="time" id="c_tijd">
     </div>
-    <div>
-      <div class="postgrid">${items.map(cardHtml).join('') || ''}</div>
-      ${items.length? '' : `<div class="activatie">Nog geen ideeën of scripts in de maak.<br>Start met <b>+ Nieuw idee</b>, <b>🎬 Nieuw videoscript</b> of laat je verrassen met <b>🎲 Inspiratie</b>.</div>`}
+    <div class="studiorow">
+      <button class="bigbtn" id="c_plan">🚀 Inplannen & automatisch posten</button>
+      <button class="bigbtn sec" id="c_concept">💾 Bewaar als idee</button>
+      <button class="qbtn" id="c_meer">alle opties…</button>
+      <button class="qbtn" id="c_video">🎬 videoscript</button>
+    </div>
+  </div>
+  <div class="inzbox"><h4 style="display:flex;justify-content:space-between;align-items:center">💡 Inspiratie — klik "gebruik" en hij staat in je post <button class="qbtn" id="insp_rol">↻ andere</button></h4>
+    <div class="inspstrip">${_comp.insp.map((i,ix)=>`
+      <div class="inspkaart${i.soort==='gat'?' gat':''}">
+        <div class="it2">${i.soort==='gat'?'📌 ':''}${esc(i.titel)}</div>
+        <div class="ih2">${esc(i.hook)}</div>
+        <button class="gebruik" data-insp="${ix}">→ gebruik</button>
+      </div>`).join('')}
+    </div>
+  </div>
+  <div class="wvgrid">
+    <div class="inzbox"><div class="wvkop">💡 Ideeën <span class="count">${ideeen.length}</span></div>
+      ${rw.weken!==null && rw.weken<2 ? `<div class="advies rood" style="margin-bottom:8px"><b>🔥 Voorraad bijna droog</b>Pak wat inspiratie hierboven.</div>`:''}
+      <div class="postgrid" style="grid-template-columns:1fr">${ideeen.map(cardHtml).join('') || '<div class="toel" style="margin:0">Nog geen ideeën — gebruik de inspiratie hierboven.</div>'}</div>
+    </div>
+    <div class="inzbox"><div class="wvkop">✍️ Script klaar <span class="count">${scripts.length}</span></div>
+      <div class="postgrid" style="grid-template-columns:1fr">${scripts.map(cardHtml).join('') || '<div class="toel" style="margin:0">Nog niets klaar om in te plannen.</div>'}</div>
     </div>
   </div>`;
   bindCards(el);
   el.querySelectorAll('[data-open]').forEach(r=>r.onclick=()=>openEdit(r.dataset.open));
   el.querySelectorAll('[data-goto]').forEach(r=>r.onclick=()=>{ view=r.dataset.goto; localStorage.setItem('mkt_view',view); render(); });
-  el.querySelector('#cre_nieuw').onclick = () => openEdit(null);
-  el.querySelector('#cre_video').onclick = () => { openEdit(null, {}); document.getElementById('f_format').value='Reel / video'; insertVideoTemplate(); };
-  el.querySelector('#cre_inspiratie').onclick = openInspiratie;
-  el.querySelectorAll('[data-vacpost]').forEach(b=>b.onclick=()=>{
-    const key = b.dataset.vacpost;
-    openEdit(null, { vacature:key, doel:'Kandidaten werven' });
-    document.getElementById('f_titel').value = 'Vacature: ' + key.split(' — ')[1] + ' bij ' + key.split(' — ')[0];
-  });
+  el.querySelectorAll('.kchip').forEach(c=>c.onclick=()=>{ _comp.kanaal = _comp.kanaal===c.dataset.kc ? '' : c.dataset.kc; _comp.tekst = document.getElementById('c_tekst').value; render(); });
+  el.querySelector('#c_tekst').addEventListener('input', composerChecklist);
+  el.querySelector('#c_mediabtn').onclick = () => el.querySelector('#c_media').click();
+  el.querySelector('#c_media').onchange = async (e) => {
+    const file = e.target.files?.[0]; if (!file) return;
+    toast('⬆️ Uploaden…');
+    const pad = `${Date.now()}_${file.name.replace(/[^a-zA-Z0-9._-]/g,'_')}`;
+    const { error } = await sb.storage.from('media').upload(pad, file, { upsert:false });
+    if (error) { toast('Upload mislukt: '+error.message); return; }
+    _comp.media = sb.storage.from('media').getPublicUrl(pad).data.publicUrl;
+    document.getElementById('c_medianame').textContent = '✓ '+file.name.slice(0,28);
+    composerChecklist(); toast('✓ Media staat klaar');
+  };
+  el.querySelector('#c_plan').onclick = () => composerSave(true);
+  el.querySelector('#c_concept').onclick = () => composerSave(false);
+  el.querySelector('#c_meer').onclick = () => {
+    openEdit(null, { vacature:_comp.vacature, kanaal:_comp.kanaal });
+    document.getElementById('f_script').value = document.getElementById('c_tekst')?.value || '';
+    if (_comp.media) { _mediaUrl = _comp.media; const mo=document.getElementById('f_mediaout'); mo.innerHTML=`📎 <a href="${esc(_comp.media)}" target="_blank">media bekijken</a>`; mo.style.display='block'; }
+    updateChecklist();
+  };
+  el.querySelector('#c_video').onclick = () => { openEdit(null, {}); document.getElementById('f_format').value='Reel / video'; insertVideoTemplate(); };
+  el.querySelector('#insp_rol').onclick = () => { _comp.tekst = document.getElementById('c_tekst').value; rolInspiratie(); render(); };
+  el.querySelectorAll('[data-insp]').forEach(b=>b.onclick=()=>composerVul(_comp.insp[+b.dataset.insp]));
+  composerChecklist();
 }
 
 // ─── VIEW 3: PLANNING ───────────────────────────────────────────
