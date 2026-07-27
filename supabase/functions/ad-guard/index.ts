@@ -165,8 +165,16 @@ Geef je adviezen. Types:
 - "stop_ad": advertentie pauzeren (alleen bij duidelijk aanhoudend falen)
 - "budget_set": nieuw dagbudget voor een ABO-set (alleen sets met eigen budget; geef nieuw_dagbudget_eur)
 - "hook_test": hooks die geen eerlijke kans krijgen + concrete testaanpak
-- "structuur": CBO→ABO-advies of andere structuurverbetering
-Elke reden in het Nederlands, kort, mét de cijfers die het onderbouwen. vertrouwen: hoog/middel/laag.`;
+- "structuur": advies over hoe de campagnes/budgetten zijn opgezet
+
+SCHRIJFSTIJL — heel belangrijk, Bryan leest dit (marketeer, maar geen zin in vakjargon):
+- Schrijf gewone-mensen-Nederlands, alsof je het aan een collega uitlegt. Korte zinnen.
+- GEEN Engelse of technische termen zonder uitleg. Dus niet "CBO/ABO", "CPA", "CTR", "impressie-aandeel", "learning phase", "post-ID". Gebruik gewone woorden: "kosten per aanmelding" i.p.v. €/lead of CPA, "hoe vaak getoond" i.p.v. impressies, "de proefperiode waarin Meta nog leert" i.p.v. leerfase, "budget staat op de campagne / op de aparte functie" i.p.v. CBO/ABO.
+- Noem altijd het concrete getal in gewone taal (bijv. "kost nu €14 per aanmelding, terwijl de rest gemiddeld €6 doet").
+- Sluit ELK advies af met één concrete zin die begint met "Doen: …" — precies wat Bryan nu moet klikken of maken.
+- Max 3 zinnen per advies. Vriendelijk, direct, geen wollige inleiding.
+Voorbeeld goede stijl: "Deze advertentie gaf 7 dagen lang geld uit maar leverde geen enkele aanmelding op (€28 weg). De rest van je advertenties levert gemiddeld wel aanmeldingen. Doen: zet deze advertentie uit in Ads Manager."
+vertrouwen: hoog/middel/laag.`;
 
     const resp = await claude.messages.create({
       model: "claude-opus-4-8",
