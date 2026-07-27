@@ -47,6 +47,30 @@ nav.fases{background:#20301a;border-bottom:1px solid #33421f;padding:0 18px;disp
 .vsrc{font-size:11px;color:#a06a28;font-weight:600}
 .spieklijst{margin-top:8px;font-size:12.5px;line-height:1.9}
 .spieklijst a{color:#3a5416;font-weight:600}
+/* Mijn week-planner */
+.weekgrid7{display:grid;grid-template-columns:repeat(7,1fr);gap:8px}
+.dagkaart{background:#fbfcf8;border:1px solid var(--line);border-radius:12px;padding:9px 10px;display:flex;flex-direction:column;gap:6px;min-height:130px}
+.dagkaart.vandaag{border-color:#8fb544;background:#f4f9e6;box-shadow:0 0 0 2px #c8f13566}
+.dk-kop{font-weight:800;font-size:12.5px;text-transform:uppercase;letter-spacing:.04em;display:flex;justify-content:space-between}
+.dk-kop span{color:var(--muted);font-weight:600}
+.dk-thema{font-size:11px;color:#5a712f;font-weight:600}
+.dk-post{font-size:11.5px;background:#fff;border:1px solid var(--line);border-radius:8px;padding:4px 7px;cursor:pointer}
+.dk-post.pub{opacity:.65}
+.dk-ritme{font-size:11px;color:#8a7a4a;background:#faf6e8;border-radius:8px;padding:4px 7px}
+.dk-add{margin-top:auto;border:1px dashed #b9c49a;background:none;border-radius:8px;font-size:11.5px;color:#6b7d43;padding:4px;cursor:pointer}
+.dk-add:hover{background:#eef4e0}
+.taakrow{display:flex;align-items:center;gap:7px;font-size:12.5px;padding:3px 0}
+.taakrow input[type=checkbox]{accent-color:#6b9a2f;width:15px;height:15px;flex:none;cursor:pointer}
+.taakrow .tt{flex:1;min-width:0;overflow-wrap:anywhere}
+.taakrow.klaar .tt{text-decoration:line-through;color:var(--muted)}
+.taakrow .tdel{border:none;background:none;color:#c0c7ad;cursor:pointer;font-size:12px;padding:2px}
+.taakrow .tdel:hover{color:#a33}
+.taakadd{display:flex;gap:7px;margin-top:10px;flex-wrap:wrap}
+.taakadd input[type=text]{flex:1;min-width:180px;padding:8px 10px;border:1px solid var(--line);border-radius:9px;font:inherit;font-size:13px}
+.taakadd input[type=date]{padding:7px 8px;border:1px solid var(--line);border-radius:9px;font:inherit;font-size:12.5px}
+.planrow.taakklaar{opacity:.6}
+@media (max-width:980px){ .weekgrid7{grid-template-columns:repeat(2,1fr)} .dagkaart{min-height:0} }
+@media (max-width:560px){ .weekgrid7{grid-template-columns:1fr} }
 .inspkaart .it2{font-weight:600;font-size:13.5px;line-height:1.3}
 .inspkaart .ih2{font-size:12px;color:#2f6a8a;font-style:italic;flex:1}
 .inspkaart .gebruik{align-self:flex-start;background:var(--glove);color:#fff;border:none;border-radius:7px;font-size:12px;font-weight:600;padding:6px 12px;cursor:pointer}
@@ -289,10 +313,12 @@ nav.fases{position:sticky;top:0;z-index:4}
   </div>
 </header>
 <nav class="fases">
+  <button class="navtab" data-view="week">📋 Mijn week <span class="nbadge" id="nb_week"></span></button>
   <button class="navtab" data-view="prestatie">📊 Prestatie</button>
   <button class="navtab" data-view="creatie">✍️ Content Creatie <span class="nbadge" id="nb_cre"></span></button>
   <button class="navtab" data-view="planning">🗓 Planning <span class="nbadge" id="nb_plan"></span></button>
 </nav>
+<div class="viewwrap" id="week"></div>
 <div class="viewwrap" id="prestatie"></div>
 <div class="viewwrap" id="creatie"></div>
 <div class="viewwrap" id="planning"></div>
@@ -469,8 +495,8 @@ const FASES = [
   {k:'Gepubliceerd',  c:'#3d9968'},
   {k:'Learnings',     c:'#4a9d9d'},
 ];
-const state = { posts: [], kanalen: [], vacs: [], cands: [], fees: null, meta: null, besluiten: [] };
-const VIEWS = ['prestatie','creatie','planning'];
+const state = { posts: [], kanalen: [], vacs: [], cands: [], fees: null, meta: null, besluiten: [], taken: null };
+const VIEWS = ['week','prestatie','creatie','planning'];
 let view = localStorage.getItem('mkt_view') || 'prestatie';
 if (!VIEWS.includes(view)) view = {bord:'creatie', kalender:'planning', inzichten:'prestatie'}[view] || 'prestatie';
 let calMaand = null; // 'YYYY-MM' van getoonde kalendermaand
@@ -529,6 +555,9 @@ async function loadFromDB(){
   state.meta = mR.error ? null : (mR.data||[]);
   const bR = await sb.from('mkt_ad_besluiten').select('*').order('created_at',{ascending:false});
   state.besluiten = bR.error ? [] : (bR.data||[]);
+  // Taken voor de weekplanner (tabel kan nog ontbreken → null = setup-kaart tonen)
+  const tR = await sb.from('mkt_taken').select('*').order('datum').order('created_at');
+  state.taken = tR.error ? null : (tR.data||[]);
 }
 async function upsertPost(p){
   const row = { ...postToRow(p), updated_by: currentUser?.id, updated_at: new Date().toISOString() };
@@ -542,6 +571,7 @@ function setupRealtime(){
   rtChannel = sb.channel('mkt-v1')
     .on('postgres_changes', {event:'*', schema:'public', table:'mkt_posts'}, async () => { await loadFromDB(); render(); })
     .on('postgres_changes', {event:'*', schema:'public', table:'mkt_kanalen'}, async () => { await loadFromDB(); refreshKanaalUI(); render(); })
+    .on('postgres_changes', {event:'*', schema:'public', table:'mkt_taken'}, async () => { await loadFromDB(); render(); })
     .subscribe();
 }
 
@@ -1540,6 +1570,122 @@ function renderPlanning(){
   el.querySelector('#calvandaag').onclick = () => { calMaand = todayISO().slice(0,7); renderCal(); };
 }
 
+// ─── VIEW 0: MIJN WEEK (Bryan's planner — alles op één plek) ────
+const WEEKRITME = { // vast wekelijks ritme naast het dagelijkse posten
+  1:'🗓 Vul de kalender: wat post je deze week?',
+  2:'🔥 15 min trends spieken (Afkijken + TikTok Creative Center)',
+  3:'🐕 Waakhond-adviezen doornemen en afhandelen',
+  4:'📊 Resultaten invullen van de posts van deze week',
+  5:'🖨 Weekrapport maken + learnings opschrijven',
+};
+let weekOffset = 0;
+const DAGNAMEN = ['zo','ma','di','wo','do','vr','za'];
+function weekDagen(offset){
+  const d = new Date(); d.setDate(d.getDate() - ((d.getDay()+6)%7) + offset*7);
+  return Array.from({length:7}, (_,i)=>{ const x=new Date(d); x.setDate(d.getDate()+i); return x.toISOString().slice(0,10); });
+}
+function autoTakenVandaag(){
+  const today = todayISO();
+  const items = [];
+  const gepost = state.posts.some(p=>p.datum===today && (PUB(p)||p.fase==='Ingepland'));
+  items.push({ ico: gepost?'✅':'✍️', txt:`Post van vandaag — <b>${esc(themaVandaag())}</b>`, done:gepost, goto:'creatie' });
+  const rt = WEEKRITME[new Date().getDay()];
+  if (rt) items.push({ ico:'📌', txt:rt, goto: rt.includes('Waakhond')||rt.includes('Resultaten')||rt.includes('rapport') ? 'prestatie' : 'creatie' });
+  state.posts.filter(p=>p.fase==='Ingepland' && p.datum && p.datum<today).forEach(p=>
+    items.push({ ico:'⏰', txt:`Over datum: <b>${esc(p.titel)}</b> — publiceren of verzetten`, open:p.id, rood:true }));
+  state.posts.filter(p=>(p.publiceerLog||'').startsWith('⚠')).forEach(p=>
+    items.push({ ico:'🚀', txt:`Automatisch publiceren mislukt: <b>${esc(p.titel)}</b>`, open:p.id, rood:true }));
+  const wh = adWaakhond().filter(a=>a.sev==='rood').length;
+  if (wh) items.push({ ico:'🐕', txt:`<b>${wh} advertentie${wh>1?'s':''}</b> met rood waakhond-advies`, goto:'prestatie', rood:true });
+  const nag = state.posts.filter(p=>PUB(p) && p.datum && p.datum<=isoDaysAgo(3) && !(Number(p.resultaat?.bereik)>0)).length;
+  if (nag) items.push({ ico:'📊', txt:`${nag} gepubliceerde post${nag>1?'s':''} zonder resultaten — even invullen`, goto:'prestatie' });
+  filmdagen().forEach(([groep,posts])=>{
+    const leeg = posts.filter(p=>!(p.script||'').trim() || p.script===VIDEO_TEMPLATE).length;
+    if (leeg) items.push({ ico:'🎬', txt:`<b>${esc(groep)}</b>: nog ${leeg} script${leeg>1?'s':''} in te vullen`, goto:'creatie' });
+  });
+  return items;
+}
+async function addTaak(tekst, datum){
+  if (!tekst.trim()) return;
+  const { error } = await sb.from('mkt_taken').insert({ tekst:tekst.trim(), datum: datum||todayISO(), door: currentProfile?.naam||'' });
+  if (error) { toast('Opslaan mislukt — is de taken-migratie al gedraaid?'); return; }
+  await loadFromDB(); render();
+}
+async function toggleTaak(id, klaar){
+  await sb.from('mkt_taken').update({ klaar }).eq('id', id);
+  const t = (state.taken||[]).find(x=>x.id===id); if (t) t.klaar = klaar;
+  render();
+}
+async function delTaak(id){
+  await sb.from('mkt_taken').delete().eq('id', id);
+  state.taken = (state.taken||[]).filter(x=>x.id!==id);
+  render();
+}
+function taakRij(t){
+  return `<div class="taakrow${t.klaar?' klaar':''}">
+    <input type="checkbox" data-tgl="${t.id}" ${t.klaar?'checked':''}>
+    <span class="tt">${esc(t.tekst)}</span>
+    <button class="tdel" data-tdel="${t.id}" title="verwijderen">✕</button>
+  </div>`;
+}
+function renderWeek(){
+  const el = document.getElementById('week');
+  const today = todayISO();
+  const dagen = weekDagen(weekOffset);
+  const T = state.taken;
+  const setup = T===null ? `<div class="advies rood" style="margin-bottom:12px"><b>⚙️ Eén keer instellen</b>De taken-tabel bestaat nog niet. Tjeerd: plak <b>supabase/migratie-taken.sql</b> (uit de repo) in de Supabase SQL Editor. Alles hieronder werkt daarna vanzelf.</div>` : '';
+  const openOud = (T||[]).filter(t=>!t.klaar && t.datum<today && t.datum<dagen[0]);
+  const auto = autoTakenVandaag();
+  const wkTh = themas();
+  el.innerHTML = `
+  ${setup}
+  ${weekOffset===0 ? `<div class="inzbox"><h4>☀️ Vandaag — dit staat er voor je klaar</h4>
+    ${auto.map(i=>`<div class="planrow${i.rood?' gemist':''}${i.done?' taakklaar':''}" ${i.open?`data-open="${i.open}"`:''} ${i.goto?`data-goto="${i.goto}"`:''} style="cursor:pointer"><span>${i.ico}</span><span class="pt">${i.txt}</span></div>`).join('')}
+    ${(T||[]).filter(t=>t.datum===today).map(taakRij).join('')}
+    ${openOud.length?`<div style="margin-top:8px;font-size:12px;font-weight:700;color:#a33">⏰ Blijven liggen van eerder:</div>${openOud.map(taakRij).join('')}`:''}
+    <div class="taakadd">
+      <input type="text" id="tk_tekst" placeholder="Eigen taak toevoegen… (bijv. filmdag De Gier voorbereiden)">
+      <input type="date" id="tk_datum" value="${today}">
+      <button class="qbtn" id="tk_add">＋ toevoegen</button>
+    </div>
+  </div>`:''}
+  <div class="inzbox"><h4 style="display:flex;justify-content:space-between;align-items:center"><span>📋 Weekplanning ${weekOffset===0?'— deze week':weekOffset===1?'— volgende week':`(${fmtD(dagen[0])} – ${fmtD(dagen[6])})`}</span>
+    <span style="display:flex;gap:6px"><button class="qbtn" id="wk_prev">‹</button><button class="qbtn" id="wk_nu">vandaag</button><button class="qbtn" id="wk_next">›</button></span></h4>
+    <div class="weekgrid7">
+      ${dagen.map(d=>{
+        const dt = new Date(d+'T12:00:00'); const dow = dt.getDay();
+        const posts = state.posts.filter(p=>p.datum===d && (p.fase==='Ingepland'||PUB(p)));
+        const taken = (T||[]).filter(t=>t.datum===d);
+        return `<div class="dagkaart${d===today?' vandaag':''}">
+          <div class="dk-kop">${DAGNAMEN[dow]} <span>${fmtD(d).slice(0,5)}</span></div>
+          <div class="dk-thema">📅 ${esc((wkTh[dow]||'').split('—')[0].trim())}</div>
+          ${posts.map(p=>`<div class="dk-post${PUB(p)?' pub':''}" data-open="${p.id}">${PUB(p)?'✅':'📤'} ${esc(p.titel.slice(0,34))}</div>`).join('')}
+          ${WEEKRITME[dow]?`<div class="dk-ritme">${esc(WEEKRITME[dow])}</div>`:''}
+          ${taken.map(taakRij).join('')}
+          <button class="dk-add" data-dagadd="${d}">＋ taak</button>
+        </div>`;
+      }).join('')}
+    </div>
+  </div>`;
+  el.querySelectorAll('[data-open]').forEach(r=>r.onclick=()=>openEdit(r.dataset.open));
+  el.querySelectorAll('[data-goto]').forEach(r=>r.onclick=()=>{ view=r.dataset.goto; localStorage.setItem('mkt_view',view); render(); });
+  el.querySelectorAll('[data-tgl]').forEach(c=>c.onclick=(e)=>{ e.stopPropagation(); toggleTaak(c.dataset.tgl, c.checked); });
+  el.querySelectorAll('[data-tdel]').forEach(b=>b.onclick=(e)=>{ e.stopPropagation(); delTaak(b.dataset.tdel); });
+  el.querySelector('#wk_prev').onclick = ()=>{ weekOffset--; render(); };
+  el.querySelector('#wk_next').onclick = ()=>{ weekOffset++; render(); };
+  el.querySelector('#wk_nu').onclick = ()=>{ weekOffset=0; render(); };
+  const addBtn = el.querySelector('#tk_add');
+  if (addBtn) {
+    const doe = ()=>{ addTaak(document.getElementById('tk_tekst').value, document.getElementById('tk_datum').value); };
+    addBtn.onclick = doe;
+    el.querySelector('#tk_tekst').addEventListener('keydown', e=>{ if(e.key==='Enter') doe(); });
+  }
+  el.querySelectorAll('[data-dagadd]').forEach(b=>b.onclick=()=>{
+    const tekst = window.prompt(`Taak voor ${fmtD(b.dataset.dagadd)}:`);
+    if (tekst) addTaak(tekst, b.dataset.dagadd);
+  });
+}
+
 function render(){
   VIEWS.forEach(v=>{
     document.getElementById(v).style.display = view===v ? 'flex' : 'none';
@@ -1549,7 +1695,10 @@ function render(){
   const nPlan = state.posts.filter(p=>p.fase==='Ingepland').length;
   document.getElementById('nb_cre').textContent = nCre||'';
   document.getElementById('nb_plan').textContent = nPlan||'';
-  if (view==='prestatie') renderPrestatie();
+  const nWeek = (state.taken||[]).filter(t=>!t.klaar && t.datum<=todayISO()).length;
+  document.getElementById('nb_week').textContent = nWeek||'';
+  if (view==='week') renderWeek();
+  else if (view==='prestatie') renderPrestatie();
   else if (view==='creatie') renderCreatie();
   else renderPlanning();
 }
