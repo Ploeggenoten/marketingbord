@@ -384,6 +384,18 @@ nav.fases{position:sticky;top:0;z-index:4}
   </div>
 </div></div>
 
+<div class="scrim" id="thscrim"><div class="ideemodal">
+  <h2>📅 Weekthema's <button class="x" id="th_close" style="font-size:20px">✕</button></h2>
+  <div class="ideebody">
+    <p class="toel" style="margin:0 0 8px">Zeven regels, één per dag: <b>zondag t/m zaterdag</b>. Dit ritme ziet het hele team, elke dag bovenaan de studio.</p>
+    <textarea id="th_tekst" style="width:100%;min-height:190px;font:inherit;font-size:13px;padding:10px;border:1px solid var(--line);border-radius:10px;line-height:1.7"></textarea>
+  </div>
+  <div class="ideefoot">
+    <span style="font-size:11.5px;color:var(--muted)">Vaste rubrieken = herkenbaar merk & makkelijker consistent posten</span>
+    <button class="btn" id="th_save">Opslaan voor het team</button>
+  </div>
+</div></div>
+
 <div id="toast"></div>
 
 <script>
@@ -1156,8 +1168,8 @@ function dagstartHtml(){
     items.push({ico:'📊', txt:`Resultaten invullen: <b>${esc(p.titel)}</b>`, open:p.id}));
   const wh = adWaakhond().filter(a=>a.sev==='rood').length;
   if (wh) items.push({ico:'🐕', txt:`<b>${wh} advertentie${wh>1?'s':''}</b> met een rood waakhond-advies — beoordeel stopzetten`, goto:'prestatie', rood:true});
-  const gaten = vacatureRadar().length;
-  if (gaten) items.push({ico:'📌', txt:`${gaten} open vacature${gaten>1?'s':''} zonder content — zie radar hieronder`});
+  const vandaagGedaan = P.some(p => p.datum===today && (PUB(p) || p.fase==='Ingepland'));
+  if (!vandaagGedaan) items.push({ico:'📅', txt:`Vandaag nog niets gepost of ingepland — thema: <b>${esc(themaVandaag())}</b>`, goto:'creatie'});
   return `<div class="inzbox"><h4>☀️ Vandaag</h4>
     ${items.length ? items.map(i=>`<div class="planrow${i.rood?' gemist':''}" ${i.open?`data-open="${i.open}"`:''} ${i.goto?`data-goto="${i.goto}"`:''} style="cursor:pointer"><span>${i.ico}</span><span class="pt">${i.txt}</span></div>`).join('')
       : '<div class="toel" style="margin:0">✅ Geen urgente acties — mooi moment om aan nieuwe content te werken.</div>'}
@@ -1184,10 +1196,108 @@ async function remakePost(id){
 // ─── VIEW 2: CONTENT CREATIE ────────────────────────────────────
 // ── Composer-status (het snel-posten-blok bovenaan Creatie) ──
 let _comp = { media:'', vacature:'', kanaal:'', tekst:'', insp:[] };
+
+// ── Terugkerende weekthema's (merk Ploeggenoten) — bewerkbaar, team-breed ──
+const THEMA_DEFAULT = [
+  'Zondag — rust of vooruitblik op de week',
+  'Werkvloer-maandag — achter de schermen bij een klant of op kantoor',
+  'Team-dinsdag — collega, recruiter of Peter Ploeg uitgelicht',
+  'Wist-je-dat-woensdag — feit of mythe over werken in productie/logistiek',
+  'Verhaal-donderdag — kandidaat of plaatsing in de spotlight',
+  'Vrijdag-win — succes van de week, weekend in',
+  'Zaterdag — luchtig / community (optioneel)',
+];
+const THEMA_IDEE = { // 2 concrete starters per weekdag (index = getDay())
+  0:[{t:'Vooruitblik: dit staat er deze week op de planning',h:'Nieuwe week, nieuwe ploegen. Dit gaan we doen:'},{t:'Zondagsrust op de werkvloer — of juist niet?',h:'Terwijl jij uitslaapt, draait de nachtploeg door.'}],
+  1:[{t:'Achter de schermen: zo ziet de werkvloer er écht uit',h:'Geen stockfoto\'s. Dit is maandagochtend bij onze klant.'},{t:'Maandag = nieuwe starters-dag',h:'Vandaag starten er weer ploeggenoten. Dit is dag 1.'}],
+  2:[{t:'Team-dinsdag: wie zit er achter Ploeggenoten?',h:'Even voorstellen: de mens achter de telefoon.'},{t:'Peter Ploeg over de week',h:'Onze mascotte heeft er weer zin in.'}],
+  3:[{t:'Wist-je-dat: mythe over uitzendwerk doorbreken',h:'"Uitzendbureaus pakken de helft van je loon." Echt?'},{t:'Wist-je-dat: dit verdient een nachtploeg écht',h:'Nachtdienst = +25% toeslag. Reken maar mee.'}],
+  4:[{t:'Verhaal-donderdag: van sollicitatie naar vast contract',h:'Drie maanden geleden belde hij ons. Nu heeft hij een contract.'},{t:'Verhaal-donderdag: de eerste werkdag van onze nieuwste ploeggenoot',h:'Week 1 zit erop. Dit vond hij ervan.'}],
+  5:[{t:'Vrijdag-win: dit maakte onze week',h:'Deze week: X mensen aan een baan geholpen. 💪'},{t:'Weekend in met de ploeg',h:'De lijnen staan stil, het weekend begint.'}],
+  6:[{t:'Zaterdag-lucht: community-vraag',h:'Wat vind jij: nachtdienst met toeslag of gewoon overdag?'},{t:'Zaterdag: werkvloer-humor',h:'Herkenbaar voor iedereen die in ploegen werkt:'}],
+};
+function themas(){
+  const c = state.besluiten.find(b=>b.advertentie==='__themas__');
+  if (c?.note) { try { const t = JSON.parse(c.note); if (Array.isArray(t) && t.length===7) return t; } catch(e){} }
+  return THEMA_DEFAULT;
+}
+function themaVandaag(){ return themas()[new Date().getDay()]; }
+function postStreak(){
+  const dagen = new Set(state.posts.filter(p=>PUB(p)&&p.datum).map(p=>p.datum));
+  let n=0; const d=new Date();
+  if (!dagen.has(todayISO())) d.setDate(d.getDate()-1); // streak telt door t/m gisteren
+  while (dagen.has(d.toISOString().slice(0,10))) { n++; d.setDate(d.getDate()-1); }
+  const ws = new Date(); ws.setDate(ws.getDate()-((ws.getDay()+6)%7));
+  const wkDagen = new Set([...dagen].filter(x=>x>=ws.toISOString().slice(0,10)));
+  return { streak:n, week:wkDagen.size };
+}
 function rolInspiratie(){
-  const gaten = vacatureRadar().slice(0,2).map(x=>({ soort:'gat', titel:`${x.key} zoekt nog kandidaten`, hook:`Nog geen content voor deze vacature${x.dgnOpen!=null?` (al ${x.dgnOpen} dgn open)`:''} — dé kans voor een post.`, vacature:x.key, kanaal:'' }));
-  const ideeen = [...IDEEENBANK].sort(()=>Math.random()-.5).slice(0,4).map(i=>({ soort:'idee', titel:i.t, hook:i.h, format:i.f, doel:i.d, kanaal:'' }));
-  _comp.insp = [...gaten, ...ideeen];
+  const dag = new Date().getDay();
+  const vandaag = (THEMA_IDEE[dag]||[]).map(i=>({ soort:'thema', titel:i.t, hook:i.h, kanaal:'' }));
+  const ideeen = [...IDEEENBANK].sort(()=>Math.random()-.5).slice(0,3).map(i=>({ soort:'idee', titel:i.t, hook:i.h, format:i.f, doel:i.d, kanaal:'' }));
+  _comp.insp = [...vandaag, ...ideeen];
+}
+
+// ── Filmdag-werkplaats: scripts per functie voorbereiden voor het filmen ──
+function filmdagen(){
+  const groepen = {};
+  state.posts.filter(p=>(p.campagne||'').startsWith('🎬')).forEach(p=>{ (groepen[p.campagne] ??= []).push(p); });
+  return Object.entries(groepen).sort((a,b)=>b[0].localeCompare(a[0]));
+}
+async function maakFilmdag(){
+  const klant = document.getElementById('fd_klant').value.trim();
+  const functie = document.getElementById('fd_functie').value.trim();
+  const n = Math.max(2, Math.min(6, Number(document.getElementById('fd_n').value)||4));
+  if (!functie) { toast('Vul in voor welke functie je gaat filmen'); return; }
+  const groep = `🎬 ${functie}${klant?` @ ${klant}`:''} · ${fmtD(todayISO())}`;
+  const nieuwe = [];
+  for (let i=1; i<=n; i++) {
+    nieuwe.push({ id:'m'+Date.now()+i+Math.random().toString(36).slice(2,5),
+      titel:`Hook ${i} — ${functie}${klant?` (${klant})`:''}`, kanaal:'', format:'Reel / video',
+      doel:'Kandidaten werven', fase:'Script klaar', campagne:groep, vacature:'', utm:'',
+      hook:'', script:VIDEO_TEMPLATE, datum:'', tijd:'', link:'', mediaUrl:'', autoPublish:false, publiceerLog:'',
+      resultaat:{}, learnings:'', notities:[], createdAt:new Date().toISOString(), _updatedAt:new Date().toISOString() });
+  }
+  state.posts.push(...nieuwe);
+  render();
+  for (const p of nieuwe) await upsertPost(p);
+  toast(`🎬 ${n} scriptkaarten klaargezet voor ${functie} — vul de hooks in of gebruik 🤖`);
+}
+function filmdagPrompt(groep, posts){
+  const functie = groep.replace('🎬 ','').split(' · ')[0];
+  const prompt = `Schrijf ${posts.length} verschillende korte wervingsvideo-scripts (hooks) voor de functie ${functie} bij Ploeggenoten, recruitmentbureau voor productie/logistiek. Kernzin: "Wij sturen geen leads of kandidaten. Wij bouwen ploegen."
+
+Elke variant moet een ANDERE invalshoek hebben (bijv. salaris-transparantie, dag-uit-het-leven, mythe doorbreken, collega aan het woord, de machine/werkplek zelf).
+
+Regels per script (geverifieerd onderzoek): hook in de eerste 2 seconden mét salaris of concreet getal; totaal max 30 seconden; gewone-mensen-Nederlands (B1); afsluiten met cv-loze CTA ("stuur ons een appje"); geen "tag iemand"-taal.
+
+Structuur per script:
+${VIDEO_TEMPLATE}
+
+Lever de ${posts.length} scripts genummerd, klaar om op de set te gebruiken.`;
+  navigator.clipboard.writeText(prompt).then(()=>toast('🤖 Prompt gekopieerd — plak in Claude, en zet de scripts daarna in de kaarten'));
+}
+function filmdagBundel(groep, posts){
+  const w = window.open('', '_blank');
+  if (!w) { toast('Pop-up geblokkeerd'); return; }
+  w.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>${esc(groep)}</title>
+  <style>body{font-family:-apple-system,system-ui,sans-serif;max-width:700px;margin:24px auto;padding:0 18px;color:#1a1f0a}
+  h1{font-size:20px;border-bottom:3px solid #c8f135;padding-bottom:8px}h2{font-size:16px;margin-top:28px;background:#f2f6e8;padding:8px 12px;border-radius:8px}
+  pre{white-space:pre-wrap;font-family:inherit;font-size:15px;line-height:1.65;background:#fbfcf8;border:1px solid #e0e5d2;border-radius:10px;padding:14px}
+  @media print{button{display:none}}</style></head><body>
+  <h1>${esc(groep)} — scriptbundel</h1>
+  <button onclick="print()" style="padding:8px 16px;border:1px solid #ccc;border-radius:8px;cursor:pointer">🖨 Afdrukken / PDF</button>
+  ${posts.map(p=>`<h2>${esc(p.titel)}</h2><pre>${esc(p.script||'— script nog leeg —')}</pre>`).join('')}
+  </body></html>`);
+  w.document.close();
+}
+async function bewaarThemas(){
+  const regels = document.getElementById('th_tekst').value.split('\n').map(r=>r.trim()).filter(Boolean);
+  if (regels.length!==7) { toast('Zorg voor precies 7 regels (zondag t/m zaterdag)'); return; }
+  const { error } = await sb.from('mkt_ad_besluiten').insert({ advertentie:'__themas__', campagne:'', besluit:'config', status:'config', door:currentProfile?.naam||'', note: JSON.stringify(regels) });
+  if (error) { toast('Opslaan mislukt'); return; }
+  document.getElementById('thscrim').classList.remove('open');
+  await loadFromDB(); render(); toast('📅 Weekthema\'s opgeslagen voor het hele team');
 }
 function composerChecklist(){
   const t = document.getElementById('c_tekst')?.value || '';
@@ -1231,12 +1341,11 @@ function composerVul(item){
   _comp.vacature = item.vacature || '';
   if (item.kanaal) _comp.kanaal = item.kanaal;
   const t = document.getElementById('c_tekst');
-  t.value = item.soort==='gat' ? `` : (item.hook + '\n\n');
-  if (item.soort==='gat') t.placeholder = `Schrijf een post voor ${item.vacature}…`;
+  t.value = item.hook + '\n\n';
   t.focus();
   composerChecklist();
   window.scrollTo({top:0, behavior:'smooth'});
-  toast(item.soort==='gat' ? `📌 Gekoppeld aan ${item.vacature}` : '✨ Hook staat klaar — maak hem af');
+  toast('✨ Hook staat klaar — maak hem af');
 }
 
 function renderCreatie(){
@@ -1247,9 +1356,16 @@ function renderCreatie(){
   const rw = runway();
   if (!_comp.insp.length) rolInspiratie();
   const kchips = state.kanalen.map(k=>`<span class="kchip${_comp.kanaal===k.naam?' on':''}" data-kc="${esc(k.naam)}" style="--kc:${k.kleur}"><span class="kdot" style="background:${_comp.kanaal===k.naam?'#fff':k.kleur}"></span>${esc(k.naam)}</span>`).join('');
+  const st = postStreak();
   el.innerHTML = `
   ${dagstartHtml()}
-  <div class="inzbox studio"><h4>✍️ Nieuwe post — schrijven, kiezen, klaar</h4>
+  <div class="inzbox studio">
+    <h4 style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">✍️ Nieuwe post — schrijven, kiezen, klaar
+      <span style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+        <span class="chip" style="font-size:11.5px">${st.streak>=2?'🔥 '+st.streak+' dagen op rij':'📈 deze week '+st.week+' dag'+(st.week===1?'':'en')+' gepost'}</span>
+        <button class="qbtn" id="th_edit" title="Weekthema's aanpassen">✏️</button>
+      </span></h4>
+    <div style="margin:-2px 0 10px;font-size:13px;font-weight:600;color:#3a5416;background:#eef4e0;border:1px solid #c4d09a;border-radius:8px;padding:7px 11px">📅 Thema van vandaag: ${esc(themaVandaag())}</div>
     <textarea id="c_tekst" placeholder="Wat wil je posten? Schrijf hier je tekst… (tip: noem het salaris in de eerste zin)">${esc(_comp.tekst||'')}</textarea>
     <div class="chkmini" id="c_check"></div>
     ${_comp.vacature?`<div style="margin-top:7px"><span class="tag doel">📌 ${esc(_comp.vacature)}</span></div>`:''}
@@ -1270,12 +1386,28 @@ function renderCreatie(){
   </div>
   <div class="inzbox"><h4 style="display:flex;justify-content:space-between;align-items:center">💡 Inspiratie — klik "gebruik" en hij staat in je post <button class="qbtn" id="insp_rol">↻ andere</button></h4>
     <div class="inspstrip">${_comp.insp.map((i,ix)=>`
-      <div class="inspkaart${i.soort==='gat'?' gat':''}">
-        <div class="it2">${i.soort==='gat'?'📌 ':''}${esc(i.titel)}</div>
+      <div class="inspkaart${i.soort==='thema'?' gat':''}">
+        <div class="it2">${i.soort==='thema'?'📅 past bij vandaag · ':''}${esc(i.titel)}</div>
         <div class="ih2">${esc(i.hook)}</div>
         <button class="gebruik" data-insp="${ix}">→ gebruik</button>
       </div>`).join('')}
     </div>
+  </div>
+  <div class="inzbox"><h4>🎬 Filmdag voorbereiden — scripts per functie</h4>
+    <div class="toel" style="margin:0 0 10px">Gaan jullie filmen? Zet per functie meerdere hooks klaar, zodat je op de set niets hoeft te verzinnen. Elke hook wordt een scriptkaart hieronder bij "Script klaar".</div>
+    <div class="studiorow" style="margin-top:0">
+      <input type="text" id="fd_functie" placeholder="Functie (bijv. Heftruckchauffeur)" style="flex:2;min-width:160px">
+      <input type="text" id="fd_klant" placeholder="Klant/locatie (optioneel)" style="flex:2;min-width:140px">
+      <select id="fd_n"><option>2</option><option>3</option><option selected>4</option><option>5</option><option>6</option></select>
+      <button class="bigbtn sec" id="fd_maak">＋ Zet scripts klaar</button>
+    </div>
+    ${filmdagen().map(([groep,posts])=>`
+      <div class="planrow" style="align-items:center">
+        <span>🎬</span>
+        <span class="pt"><b>${esc(groep)}</b> · ${posts.length} scripts · ${posts.filter(p=>(p.script||'')!==VIDEO_TEMPLATE && (p.script||'').trim()).length} ingevuld</span>
+        <button class="qbtn" data-fdai="${esc(groep)}">🤖 AI-prompt</button>
+        <button class="qbtn" data-fdprint="${esc(groep)}">🖨 setbundel</button>
+      </div>`).join('') || ''}
   </div>
   <div class="wvgrid">
     <div class="inzbox"><div class="wvkop">💡 Ideeën <span class="count">${ideeen.length}</span></div>
@@ -1313,6 +1445,15 @@ function renderCreatie(){
   el.querySelector('#c_video').onclick = () => { openEdit(null, {}); document.getElementById('f_format').value='Reel / video'; insertVideoTemplate(); };
   el.querySelector('#insp_rol').onclick = () => { _comp.tekst = document.getElementById('c_tekst').value; rolInspiratie(); render(); };
   el.querySelectorAll('[data-insp]').forEach(b=>b.onclick=()=>composerVul(_comp.insp[+b.dataset.insp]));
+  el.querySelector('#th_edit').onclick = () => {
+    document.getElementById('th_tekst').value = themas().join('\n');
+    document.getElementById('thscrim').classList.add('open');
+  };
+  el.querySelector('#fd_maak').onclick = maakFilmdag;
+  el.querySelectorAll('[data-fdai]').forEach(b=>b.onclick=(e)=>{ e.stopPropagation();
+    const g = b.dataset.fdai; filmdagPrompt(g, state.posts.filter(p=>p.campagne===g)); });
+  el.querySelectorAll('[data-fdprint]').forEach(b=>b.onclick=(e)=>{ e.stopPropagation();
+    const g = b.dataset.fdprint; filmdagBundel(g, state.posts.filter(p=>p.campagne===g)); });
   composerChecklist();
 }
 
@@ -1713,6 +1854,9 @@ function openInspiratie(){ rollIdeeen(); document.getElementById('iscrim').class
 document.getElementById('i_reroll').onclick = rollIdeeen;
 document.getElementById('i_close').onclick = () => document.getElementById('iscrim').classList.remove('open');
 document.getElementById('iscrim').onclick = e => { if (e.target.id==='iscrim') document.getElementById('iscrim').classList.remove('open'); };
+document.getElementById('th_close').onclick = () => document.getElementById('thscrim').classList.remove('open');
+document.getElementById('thscrim').onclick = e => { if (e.target.id==='thscrim') document.getElementById('thscrim').classList.remove('open'); };
+document.getElementById('th_save').onclick = bewaarThemas;
 
 // Vernieuw data als tab weer zichtbaar wordt
 document.addEventListener('visibilitychange', async () => {
