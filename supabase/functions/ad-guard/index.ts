@@ -70,7 +70,11 @@ Deno.serve(async (req) => {
 
     // ── data: stats uit db + live budgetten uit Meta ──
     const cut30 = daysAgo(30);
-    const { data: metaRows } = await db.from("mkt_meta_stats").select("*").gte("datum", cut30);
+    // Vandaag bewust NIET meenemen: de lopende dag is halve data (leads komen later binnen
+    // dan de klik) en zou de agent 's ochtends structureel te somber maken.
+    const vandaag = new Date().toLocaleDateString("sv-SE", { timeZone: "Europe/Amsterdam" });
+    const { data: metaRows } = await db.from("mkt_meta_stats").select("*")
+      .gte("datum", cut30).lt("datum", vandaag);
     const { data: besluiten } = await db.from("mkt_ad_besluiten").select("*")
       .not("advertentie", "like", "\\_\\_%");
     if (!metaRows?.length) return json({ ok: true, melding: "geen advertentiedata" });

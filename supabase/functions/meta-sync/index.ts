@@ -57,9 +57,18 @@ Deno.serve(async (req) => {
     }
 
     // ── inzichten ophalen: per dag, per advertentie, laatste 30 dagen ──
+    // LET OP: date_preset=last_30d loopt bij Meta tot en met GISTEREN — dan blijft de
+    // lopende dag altijd leeg en heeft meermaals per dag kijken geen zin. Daarom een
+    // expliciete time_range die vandaag wél meeneemt (cijfers van vandaag zijn deels;
+    // de app labelt die dag als 'loopt nog' en de waakhond oordeelt er niet over).
+    const vandaag = new Date().toLocaleDateString("sv-SE", { timeZone: "Europe/Amsterdam" }); // YYYY-MM-DD
+    const startD = new Date(vandaag + "T12:00:00Z");
+    startD.setDate(startD.getDate() - 29);
+    const sinds = startD.toISOString().slice(0, 10);
+    const range = encodeURIComponent(JSON.stringify({ since: sinds, until: vandaag }));
     const fields = "campaign_name,adset_name,ad_name,spend,impressions,clicks,reach,actions";
     let url = `${GRAPH}/${account}/insights?level=ad&fields=${fields}` +
-      `&time_increment=1&date_preset=last_30d&limit=500&access_token=${encodeURIComponent(token)}`;
+      `&time_increment=1&time_range=${range}&limit=500&access_token=${encodeURIComponent(token)}`;
     // Meerdere ads kunnen dezelfde naam hebben → aggregeer per (datum, campagne, advertentienaam),
     // anders botst de upsert ("cannot affect row a second time").
     const agg = new Map<string, Record<string, unknown>>();

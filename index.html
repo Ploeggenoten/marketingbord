@@ -551,7 +551,7 @@ async function loadFromDB(){
   const fR = await sb.from('fin_placements').select('pipeline_candidate_id,fee_excl,concept');
   state.fees = fR.error ? null : (fR.data||[]);
   // Live Meta-cijfers (gevuld door de fase 2-Edge Function; tabel kan nog leeg/afwezig zijn)
-  const mR = await sb.from('mkt_meta_stats').select('*').order('datum',{ascending:false}).limit(400);
+  const mR = await sb.from('mkt_meta_stats').select('*').order('datum',{ascending:false}).limit(2000);
   state.meta = mR.error ? null : (mR.data||[]);
   const bR = await sb.from('mkt_ad_besluiten').select('*').order('created_at',{ascending:false});
   state.besluiten = bR.error ? [] : (bR.data||[]);
@@ -835,7 +835,7 @@ function metaStatsHtml(){
       <td class="rr">€${cpc.toFixed(2)}</td><td class="rr">${ctr.toFixed(2)}%</td><td class="rr">${a.leads}</td>
       <td class="rr">${a.leads?'€'+cpl.toFixed(2):'—'}</td></tr>`;
   }).join('');
-  const laatst = state.meta[0]?.synced_at ? state.meta[0].synced_at.slice(0,16).replace('T',' ') : '';
+  const laatst = syncOuderdom();
   // Keten-koppeling: totale ad-uitgaven vs kandidaten/plaatsingen met bron Meta (30 dgn)
   const spend = Object.values(agg).reduce((s,a)=>s+a.uitgegeven,0);
   const candsM = state.cands.filter(c=>c.bron==='Meta' && (c.since||'')>=cut).length;
@@ -849,9 +849,11 @@ function metaStatsHtml(){
   });
   const dagen=['zo','ma','di','wo','do','vr','za'];
   const maxSp = Math.max(...Object.values(perDag).map(d=>d.uitgegeven), 1);
+  const vandaag = todayISO();
   const dagRows = Object.entries(perDag).sort((a,b)=>b[0].localeCompare(a[0])).map(([dt,d])=>{
     const cpc = d.kliks? d.uitgegeven/d.kliks : 0;
-    return `<tr><td><b>${dagen[new Date(dt+'T12:00').getDay()]}</b> ${fmtD(dt)}</td>
+    const nu = dt===vandaag ? ' <small style="color:var(--muted)">· loopt nog</small>' : '';
+    return `<tr${dt===vandaag?' style="background:#f7faf0"':''}><td><b>${dagen[new Date(dt+'T12:00').getDay()]}</b> ${fmtD(dt)}${nu}</td>
       <td class="rr">€${d.uitgegeven.toFixed(2)}</td>
       <td style="min-width:90px"><div class="cbar" style="height:7px;border-radius:4px;background:#e2e6d6;overflow:hidden"><i style="display:block;height:100%;width:${Math.round(d.uitgegeven/maxSp*100)}%;background:#6fa03c"></i></div></td>
       <td class="rr">${fmtN(d.kliks)}</td><td class="rr">€${cpc.toFixed(2)}</td><td class="rr">${d.leads}</td>
@@ -861,7 +863,18 @@ function metaStatsHtml(){
   ${keten}
   <h4 style="margin-top:14px">📅 Per dag (laatste 14 dagen)</h4>
   <div style="overflow-x:auto"><table class="itable metatable"><tr><th>Dag</th><th class="rr">Uitgegeven</th><th></th><th class="rr">Kliks</th><th class="rr">CPC</th><th class="rr">Leads</th><th class="rr">€/lead</th></tr>${dagRows || '<tr><td colspan="7" style="color:var(--muted)">Nog geen dagdata.</td></tr>'}</table></div>
-  <div class="syncnote">Sync draait dagelijks automatisch server-side (07:30 en 13:30) · laatste: ${laatst||'onbekend'} · richtlijn NL: Meta-CPC voor vacatureverkeer ± €0,30-0,40</div>`;
+  <div class="syncnote">📡 Bijgewerkt: <b>${laatst}</b> · server-side sync elk half uur (07:00-20:30) én bij het openen van dit scherm · vandaag loopt nog, die cijfers groeien de dag door (leads komen vaak later binnen dan de klik) · richtlijn NL: Meta-CPC voor vacatureverkeer ± €0,30-0,40</div>`;
+}
+// Hoe vers zijn de cijfers? In mensentaal, zodat Bryan meerdere keren per dag kan kijken.
+function syncOuderdom(){
+  const laatst = state.meta?.[0]?.synced_at;
+  if (!laatst) return 'onbekend';
+  const min = Math.round((Date.now() - new Date(laatst).getTime())/60000);
+  if (min < 2) return 'zojuist';
+  if (min < 60) return `${min} min geleden`;
+  const u = Math.round(min/60);
+  if (u < 24) return `${u} uur geleden`;
+  return laatst.slice(0,16).replace('T',' ');
 }
 // ─── META-SYNC (Edge Function, token server-side) ───────────────
 let _metaSyncing = false;
@@ -883,10 +896,11 @@ async function metaSync(handmatig){
   _metaSyncing = false;
 }
 function metaAutoSync(){
-  // Alleen als de koppeling ooit data gaf en die ouder is dan 6 uur
+  // Alleen als de koppeling ooit data gaf. Drempel 30 min: Bryan kijkt meerdere keren
+  // per dag, dus bij openen van het scherm horen de cijfers vers te zijn — niet uren oud.
   if (!state.meta || !state.meta.length) return;
   const laatst = state.meta[0]?.synced_at || '';
-  if (!laatst || (Date.now() - new Date(laatst).getTime()) > 6*3600e3) metaSync(false);
+  if (!laatst || (Date.now() - new Date(laatst).getTime()) > 30*60e3) metaSync(false);
 }
 
 // ─── ADVERTENTIE-WAAKHOND ───────────────────────────────────────
@@ -903,19 +917,29 @@ function adStats(rows){
 function adWaakhond(){
   if (!state.meta || !state.meta.length) return [];
   const d7 = isoDaysAgo(7), d14 = isoDaysAgo(14), d2 = isoDaysAgo(2);
-  const perAd = {};
-  state.meta.forEach(r=>{
+  // Vandaag telt niet mee in het OORDEEL: die dag is nog halverwege en leads komen later
+  // binnen dan de klik, dus elke advertentie zou 's ochtends onterecht rood kleuren.
+  // Voor 'staat hij écht uit?' (s2) kijken we wél naar vandaag — daar is uitgave = bewijs.
+  const vandaag = todayISO();
+  const afgerond = state.meta.filter(r=>(r.datum||'') < vandaag);
+  const perAd = {}, perAdAlles = {};
+  afgerond.forEach(r=>{
     const k = (r.campagne||'—')+'|'+(r.advertentie||'—');
     (perAd[k] ??= []).push(r);
   });
-  const acc30 = adStats(state.meta);
+  state.meta.forEach(r=>{
+    const k = (r.campagne||'—')+'|'+(r.advertentie||'—');
+    (perAdAlles[k] ??= []).push(r);
+  });
+  const acc30 = adStats(afgerond);
   const uit = [];
-  for (const [k, rows] of Object.entries(perAd)){
+  for (const [k, alleRows] of Object.entries(perAdAlles)){
     const [campagne, advertentie] = k.split('|');
+    const rows = perAd[k] ?? [];              // zonder vandaag → voor het oordeel
     const s7 = adStats(rows.filter(r=>r.datum>=d7));
     const sPrev = adStats(rows.filter(r=>r.datum>=d14 && r.datum<d7));
     const s30 = adStats(rows);
-    const s2 = adStats(rows.filter(r=>r.datum>=d2));
+    const s2 = adStats(alleRows.filter(r=>r.datum>=d2));   // mét vandaag → loopt hij nog?
     const besluit = state.besluiten.find(b=>b.advertentie===advertentie && b.campagne===campagne && b.status==='open');
     // Gemarkeerd om te stoppen → bewaken of hij écht uit staat
     if (besluit?.besluit==='stop'){
