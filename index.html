@@ -153,13 +153,14 @@ nav.fases{background:#20301a;border-bottom:1px solid #33421f;padding:0 18px;disp
 .wkcell{min-height:200px;border-right:1px solid #e6e9db;border-bottom:1px solid #e6e9db;padding:8px 8px 10px;display:flex;flex-direction:column;gap:5px;cursor:pointer;min-width:0}
 .wkcell:last-child{border-right:none}
 .wkcell:hover{background:#f6f8ef}
-.wkcell.today{background:#e9f3ec;box-shadow:inset 0 3px 0 #2f8f5b}
+.wkcell.today{background:#fff6cc;box-shadow:inset 0 3px 0 #e6b800}
+.wkcell.today:hover{background:#fff1b3}
 .wkcell.past{background:#f7f8f2}
 .wkcell.vrij{background:repeating-linear-gradient(135deg,#f6f7f1 0 8px,#eef0e6 8px 16px)}
 .wk-kop em.vrijlabel{background:#8a917c}
 .wk-kop{display:flex;align-items:baseline;gap:6px;font-size:12px;color:var(--muted)}
 .wk-kop b{font-family:var(--disp);font-weight:400;font-size:15px;letter-spacing:.05em;text-transform:uppercase;color:var(--txt)}
-.wk-kop em{margin-left:auto;font-style:normal;font-size:10px;font-weight:700;color:#fff;background:#2f8f5b;border-radius:999px;padding:1px 7px}
+.wk-kop em{margin-left:auto;font-style:normal;font-size:10px;font-weight:700;color:#4a3a00;background:#f5cf3a;border-radius:999px;padding:1px 7px}
 .wk-uren{height:5px;border-radius:999px;background:#e2e6d6;overflow:hidden}
 .wk-uren i{display:block;height:100%;background:#6fa03c}
 .wk-uren.vol i{background:var(--red)}
@@ -1834,9 +1835,8 @@ const VASTE_AFSPRAKEN = [
     txt:'o.a. Meta-advertenties bespreken — aanpassingen en dagtaken gaan als taken in de agenda' },
   { k:'weekendcheck', dagen:[5], van:'15:30', tot:'16:00', titel:'Weekendcheck Meta-advertenties', ico:'🔍', gebied:'ads',
     txt:'staan alle advertenties en budgetten goed voor het weekend?' },
-  { k:'afsluiting', dagen:[1,2,3,5], van:'16:45', tot:'17:00', titel:'Dagafsluiting', ico:'🔔', gebied:'overig',
-    txt:'taken afvinken of doorschuiven naar de volgende werkdag' },
 ];
+const AFSLUITING_TIJD = '16:45'; // herinnering in de app; staat niet als blok in de agenda (Bryan, 19 okt 2026)
 const tMin = hm => { const [h,m] = hm.split(':').map(Number); return h*60+m; };
 const tStr = m => `${String(Math.floor(m/60)).padStart(2,'0')}:${String(m%60).padStart(2,'0')}`;
 const isoLokaal = d => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
@@ -1919,8 +1919,7 @@ function checkAfsluiting(){
   const nu = new Date(), today = todayISO();
   if (document.getElementById('app')?.style.display==='none' || !state.taken) return;
   if (!WERKDAGEN.includes(nu.getDay())) return;
-  const afs = VASTE_AFSPRAKEN.find(a=>a.k==='afsluiting');
-  if (nu.getHours()*60+nu.getMinutes() < tMin(afs.van)) return;
+  if (nu.getHours()*60+nu.getMinutes() < tMin(AFSLUITING_TIJD)) return;
   let gedaan = ''; try { gedaan = localStorage.getItem(AFSL_KEY)||''; } catch(e) {}
   if (gedaan===today || document.getElementById('afsl') || Date.now()-_afslLater < 30*60e3) return;
   const open = state.taken.filter(t=>t.datum===today && !t.klaar).length;
@@ -2175,7 +2174,6 @@ function renderWeek(){
   el.querySelectorAll('[data-afspraak]').forEach(a=>a.onclick=(e)=>{
     e.stopPropagation();
     if (a.dataset.afspraak==='weekendcheck') { view='prestatie'; localStorage.setItem('mkt_view',view); render(); return; }
-    if (a.dataset.afspraak==='afsluiting' && a.dataset.dag===todayISO()) { toonAfsluiting(true); return; }
     dsDatum = a.dataset.dag; render();
     const box = document.getElementById('ds_box');
     box.scrollIntoView({ behavior:'smooth', block:'center' });
