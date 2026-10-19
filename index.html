@@ -90,6 +90,8 @@ nav.fases{background:#20301a;border-bottom:1px solid #33421f;padding:0 18px;disp
 .dp-rij.lunch span:last-child{color:var(--muted);padding-top:3px}
 .dp-rij.afspraak span:last-child{background:#eef1e6;border:1px dashed #b9c49a;border-radius:6px;padding:3px 7px;cursor:pointer}
 .dp-rij.afspraak.ds span:last-child{background:#fff6dc;border-color:#e2c46d}
+.spraak{display:flex;gap:8px;align-items:center;margin-top:6px;font-size:12px;color:var(--muted)}
+.spraak .qbtn.aan{background:var(--red);color:#fff;border-color:var(--red)}
 .dp-pauze{display:block;font-size:11px;color:var(--muted);margin:-2px 0 0 22px}
 .dp-past{margin-top:6px;padding:7px 9px;border-radius:8px;background:#fdeceb;font-size:12.5px}
 .ttijd{font-variant-numeric:tabular-nums;font-weight:800}
@@ -1922,7 +1924,40 @@ function toonAfsluiting(force=false){
 
 const afsprakenOp = d => VASTE_AFSPRAKEN.filter(a=>a.dagen.includes(new Date(d+'T12:00:00').getDay()));
 const afspraakMin = a => { const [h1,m1]=a.van.split(':').map(Number), [h2,m2]=a.tot.split(':').map(Number); return (h2*60+m2)-(h1*60+m1); };
-let dsGebied = 'ads', dsDatum = null;
+let dsGebied = 'ads', dsDatum = null, dsTekst = '';
+// ── Inspreken (Web Speech API: Safari en Chrome; Chrome stuurt de audio naar Google, Safari naar Apple) ──
+const SpraakHerk = window.SpeechRecognition || window.webkitSpeechRecognition || null;
+let _spraak = null;
+const GETAL = { een:1, één:1, twee:2, drie:3, vier:4, vijf:5, zes:6 };
+function spraakNaarRegel(t){
+  let r = t.trim().replace(/[.!?]+$/,'');
+  r = r.replace(/\s+(?:een\s+)?kwartier$/i, ' 15m')
+       .replace(/\s+anderhalf\s+uur$/i, ' 1,5u')
+       .replace(/\s+(?:een\s+)?half\s+uur(?:tje)?$/i, ' 30m')
+       .replace(/\s+(een|één|twee|drie|vier|vijf|zes)\s+uur$/i, (_, w) => ` ${GETAL[w.toLowerCase()]}u`)
+       .replace(/\s+(\d+(?:[.,]\d+)?)\s*(minuten|minuut)$/i, ' $1m');
+  return r.charAt(0).toUpperCase() + r.slice(1);
+}
+function spraakStartStop(){
+  if (_spraak) { _spraak.stop(); return; }
+  const rec = new SpraakHerk();
+  rec.lang = 'nl-NL'; rec.continuous = true; rec.interimResults = true;
+  rec.onresult = e => {
+    let tussen = '';
+    for (let i = e.resultIndex; i < e.results.length; i++) {
+      const res = e.results[i];
+      if (res.isFinal) {
+        const regel = spraakNaarRegel(res[0].transcript);
+        if (regel) dsTekst = (dsTekst.trim() ? dsTekst.replace(/\s+$/,'') + '\n' : '') + regel;
+      } else tussen += res[0].transcript;
+    }
+    const ta = document.getElementById('ds_taken'); if (ta) { ta.value = dsTekst; ta.scrollTop = ta.scrollHeight; }
+    const im = document.getElementById('ds_interim'); if (im) im.textContent = tussen ? '… ' + tussen : 'Luistert…';
+  };
+  rec.onerror = e => { toast(e.error==='not-allowed' ? '🎤 Geen toegang tot de microfoon — sta hem toe in je browser' : '🎤 Inspreken lukte niet ('+e.error+')'); };
+  rec.onend = () => { _spraak = null; render(); };
+  try { rec.start(); _spraak = rec; render(); } catch(e) { toast('🎤 Inspreken kon niet starten'); }
+}
 // Open Meta-punten voor de dagstart: agent-adviezen die nog open staan
 function metaTeBespreken(){
   return state.besluiten.filter(b=>b.door==='Claude-agent' && b.status==='open' && !(b.advertentie||'').startsWith('__'));
@@ -1938,7 +1973,7 @@ async function addTaken(regels, datum, gb, duur){
   const bestaand = new Set((state.taken||[]).filter(t=>t.datum===datum).map(t=>t.tekst));
   // Optioneel per regel een tijd erachter: "Script schrijven 1,5u" / "Mail Tjeerd 15m"
   const parse = r => {
-    const m = r.match(/\s+(\d+(?:[.,]\d+)?)\s*(u|uur|m|min)\.?$/i);
+    const m = r.match(/\s+(\d+(?:[.,]\d+)?)\s*(uur|u|minuten|minuut|min|m)\.?$/i);
     if (!m) return { tekst:r, duur };
     const n = Number(m[1].replace(',','.'));
     return { tekst: r.slice(0, m.index).trim(), duur: Math.max(5, Math.round(/^u/i.test(m[2]) ? n*60 : n)) };
@@ -2026,7 +2061,9 @@ function dagplanningHtml(dagen){
     <div class="dp-grid">
       <div>
         <div class="ds-kop">✅ Taken voor ${dagLabel(d)} <small>één per regel · tijd erachter mag: "Script schrijven 1,5u"</small></div>
-        <textarea id="ds_taken" rows="5" placeholder="Bijv.&#10;Budget vacatureset De Gier naar €12 15m&#10;Script Meet the team schrijven 1u&#10;Flyer magazijn ontwerpen 2u"></textarea>
+        <textarea id="ds_taken" rows="5" placeholder="Bijv.&#10;Budget vacatureset De Gier naar €12 15m&#10;Script Meet the team schrijven 1u&#10;Flyer magazijn ontwerpen 2u">${esc(dsTekst)}</textarea>
+        ${SpraakHerk ? `<div class="spraak"><button class="qbtn${_spraak?' aan':''}" id="ds_mic" title="Taken inspreken — elke zin wordt een taak">${_spraak?'⏹ Stop met inspreken':'🎤 Inspreken'}</button>
+          <span id="ds_interim">${_spraak?'Luistert… zeg per taak één zin, met de tijd erachter ("…een half uur").':''}</span></div>` : ''}
         ${v2?`<div class="gkeuze" style="margin:6px 0">${GEBIEDEN.map(g=>`<button class="kchip${g.k===dsGebied?' on':''}" data-dsgeb="${g.k}" style="--kc:${g.c}">${esc(g.kort)}</button>`).join('')}</div>`:''}
         <div style="display:flex;gap:7px;align-items:center;flex-wrap:wrap">
           ${v2?`<select id="ds_duur" title="Tijd per taak als je er geen achter zet">${DUREN.map(m=>`<option value="${m}"${m===30?' selected':''}>${fmtDuur(m)} per taak</option>`).join('')}</select>`:''}
@@ -2152,7 +2189,11 @@ function renderWeek(){
   });
   const dsDuur = ()=> Number(el.querySelector('#ds_duur')?.value)||30;
   const dsZet = el.querySelector('#ds_zet');
-  if (dsZet) dsZet.onclick = ()=> addTaken(el.querySelector('#ds_taken').value.split('\n'), dsDatum, dsGebied, dsDuur());
+  const dsTa = el.querySelector('#ds_taken');
+  if (dsTa) dsTa.oninput = ()=>{ dsTekst = dsTa.value; };
+  if (dsZet) dsZet.onclick = async ()=>{ _spraak?.stop(); const regels = dsTa.value.split('\n'); dsTekst = ''; await addTaken(regels, dsDatum, dsGebied, dsDuur()); };
+  const mic = el.querySelector('#ds_mic');
+  if (mic) mic.onclick = spraakStartStop;
   el.querySelectorAll('[data-dsadv]').forEach(b=>b.onclick=()=>{
     const adv = state.besluiten.find(x=>String(x.id)===b.dataset.dsadv);
     if (adv) addTaken([adviesAlsTaak(adv)], dsDatum, 'ads', 15);
