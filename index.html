@@ -1016,10 +1016,10 @@ async function toggleConfig(key, vraagAan, meldingAan, meldingUit){
   toast(naar==='aan' ? meldingAan : meldingUit);
 }
 const toggleAutoStop = () => toggleConfig('__auto_stop__',
-  'Auto-stop aanzetten?\n\nDe Claude-agent mag dan zelf advertenties PAUZEREN (nooit verwijderen of budgetten wijzigen) als ze duidelijk falen: geld op zonder leads, of kosten per lead ver boven jullie gemiddelde. Max 2 per dag, altijd met reden gelogd, en "negeer"-besluiten worden gerespecteerd.',
+  'Auto-stop aanzetten?\n\nDe Claude-agent mag dan zelf advertenties PAUZEREN (nooit verwijderen of budgetten wijzigen) als ze de 2·1·5-kill-trigger raken: minstens €15 besteed en 1.000 keer getoond, en een link-CTR onder 1,5% of link-CPC boven €1. Max 2 per dag, altijd met reden gelogd, en "negeer"-besluiten worden gerespecteerd.',
   '🤖 Auto-stop AAN — de agent mag falende ads pauzeren', 'Auto-stop UIT — de agent adviseert alleen nog');
 const toggleAutoBudget = () => toggleConfig('__auto_budget__',
-  'Auto-budget aanzetten?\n\nDe Claude-agent mag dan zelf dagbudgetten van advertentiesets aanpassen (bijschalen bij bewezen winnaars, afschalen bij verliezers). Vangrails: alleen sets met eigen budget (ABO), max ±30% per keer, minimaal €5/dag, maximaal 1 wijziging per set per 48 uur, en het TOTALE dagbudget van het account kan nooit stijgen — het plafond verhogen blijft mensenwerk. Alles wordt met reden gelogd.',
+  'Auto-budget aanzetten?\n\nDe Claude-agent mag dan zelf dagbudgetten van advertentiesets aanpassen (bijschalen alleen als de set volgens 2·1·5 op schalen staat: op norm, 3+ dagen live, 10+ leads; afschalen bij verliezers). Vangrails: alleen sets met eigen budget (ABO), max ±20% per keer, minimaal €5/dag, maximaal 1 wijziging per set per 48 uur, en het TOTALE dagbudget van het account kan nooit stijgen — het plafond verhogen blijft mensenwerk. Alles wordt met reden gelogd.',
   '💶 Auto-budget AAN — de agent mag herverdelen binnen het plafond', 'Auto-budget UIT — budget-adviezen zonder uitvoering');
 function agentAdviezen(){
   return state.besluiten.filter(b=>['advies','budget'].includes(b.besluit) && b.status==='open' && !b.advertentie.startsWith('__'));

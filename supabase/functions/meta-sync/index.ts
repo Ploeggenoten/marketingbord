@@ -66,7 +66,7 @@ Deno.serve(async (req) => {
     startD.setDate(startD.getDate() - 29);
     const sinds = startD.toISOString().slice(0, 10);
     const range = encodeURIComponent(JSON.stringify({ since: sinds, until: vandaag }));
-    const fields = "campaign_name,adset_name,ad_name,spend,impressions,clicks,reach,actions";
+    const fields = "campaign_name,adset_name,ad_name,spend,impressions,clicks,inline_link_clicks,reach,actions";
     let url = `${GRAPH}/${account}/insights?level=ad&fields=${fields}` +
       `&time_increment=1&time_range=${range}&limit=500&access_token=${encodeURIComponent(token)}`;
     // Meerdere ads kunnen dezelfde naam hebben → aggregeer per (datum, campagne, advertentienaam),
@@ -83,12 +83,13 @@ Deno.serve(async (req) => {
         const key = `${r.date_start}|${r.campaign_name ?? ""}|${r.adset_name ?? ""}|${r.ad_name ?? ""}`;
         const cur = agg.get(key) ?? {
           datum: r.date_start, campagne: r.campaign_name ?? "", advertentieset: r.adset_name ?? "", advertentie: r.ad_name ?? "",
-          uitgegeven: 0, impressies: 0, kliks: 0, leads: 0, bereik: 0,
+          uitgegeven: 0, impressies: 0, kliks: 0, link_kliks: 0, leads: 0, bereik: 0,
           synced_at: new Date().toISOString(),
         };
         cur.uitgegeven = (cur.uitgegeven as number) + Number(r.spend || 0);
         cur.impressies = (cur.impressies as number) + Number(r.impressions || 0);
         cur.kliks = (cur.kliks as number) + Number(r.clicks || 0);
+        cur.link_kliks = (cur.link_kliks as number) + Number(r.inline_link_clicks || 0); // 2·1·5 rekent met link-klikken
         cur.leads = (cur.leads as number) + leads;
         cur.bereik = (cur.bereik as number) + Number(r.reach || 0);
         agg.set(key, cur);
