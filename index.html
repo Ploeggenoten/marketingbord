@@ -75,6 +75,38 @@ nav.fases{background:#20301a;border-bottom:1px solid #33421f;padding:0 18px;disp
 .balansrij .bbar div.af{opacity:1}
 .balansrij .buren{text-align:right;color:var(--muted);font-variant-numeric:tabular-nums}
 @media (max-width:560px){ .balansrij{grid-template-columns:110px 1fr 70px} }
+/* Dagplanning + dagafsluiting */
+.dagplan{margin-bottom:12px}
+.dp-dagen{display:flex;gap:5px;flex-wrap:wrap}
+.dp-dagen .calnav{font-size:12px;font-weight:600}
+.dp-dagen .calnav.on{background:#2f8f5b;color:#fff;border-color:#2f8f5b}
+.dp-grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.1fr);gap:18px}
+.dagplan textarea{width:100%;border:1px solid var(--line);border-radius:9px;padding:8px 10px;font:inherit;font-size:13px;resize:vertical}
+.dagplan select{padding:6px 8px;border:1px solid var(--line);border-radius:8px;font:inherit;font-size:12.5px;background:#fff}
+.dp-lijn{display:flex;flex-direction:column;gap:4px}
+.dp-rij{display:grid;grid-template-columns:92px 1fr;gap:8px;align-items:start;font-size:12.5px}
+.dp-rij .taakrow{padding-top:0}
+.dp-tijd{font-variant-numeric:tabular-nums;font-weight:700;color:var(--muted);padding-top:3px}
+.dp-rij.lunch span:last-child{color:var(--muted);padding-top:3px}
+.dp-rij.afspraak span:last-child{background:#eef1e6;border:1px dashed #b9c49a;border-radius:6px;padding:3px 7px;cursor:pointer}
+.dp-rij.afspraak.ds span:last-child{background:#fff6dc;border-color:#e2c46d}
+.dp-pauze{display:block;font-size:11px;color:var(--muted);margin:-2px 0 0 22px}
+.dp-past{margin-top:6px;padding:7px 9px;border-radius:8px;background:#fdeceb;font-size:12.5px}
+.ttijd{font-variant-numeric:tabular-nums;font-weight:800}
+.afsl-ov{position:fixed;inset:0;background:rgba(20,26,11,.45);display:flex;align-items:center;justify-content:center;z-index:999;padding:16px}
+.afsl{background:#fff;border-radius:14px;max-width:520px;width:100%;padding:18px 20px;box-shadow:0 20px 50px rgba(0,0,0,.25);max-height:90vh;overflow:auto}
+.afsl h3{margin:0 0 6px;font-family:var(--disp);font-weight:400;letter-spacing:.04em;text-transform:uppercase}
+.afsl p{font-size:13.5px;margin:0 0 10px}
+.afsl-rij{display:flex;gap:6px;align-items:center;border-left:3px solid var(--gc);padding:6px 0 6px 9px;border-bottom:1px solid #eef0e6;font-size:13px}
+.afsl-rij span{flex:1}.afsl-rij small{color:var(--muted)}
+.afsl-knoppen{display:flex;gap:8px;margin-top:12px;flex-wrap:wrap}
+@media (max-width:760px){
+  .dp-grid{grid-template-columns:1fr}
+  .dp-rij{grid-template-columns:76px 1fr;gap:6px}
+  .dp-rij .taakrow{flex-wrap:wrap;row-gap:3px;align-items:flex-start}
+  .dp-rij .taakrow .tt{flex:1 1 calc(100% - 30px)}
+  .dp-rij .taakrow .dchip[data-tschuif]{margin-left:22px}
+}
 /* Contentplanning: twee banen per week */
 .pweek{margin-bottom:12px}
 .pgrid{display:grid;grid-template-columns:170px repeat(7,minmax(0,1fr))}
@@ -1786,17 +1818,115 @@ const gebied = k => GEBIEDEN.find(g=>g.k===k) || GEBIEDEN[GEBIEDEN.length-1];
 const DUREN = [15,30,60,90,120,180,240];
 const WEEK_UREN = 32;      // 32 uur, 4 dagen
 const VRIJE_DAGEN = [4];   // getDay(): donderdag vrij
+const WERKDAGEN = [1,2,3,5];
+const WERKTIJD = { van:'08:30', tot:'17:00', lunch:['12:30','13:00'] };
 const DAG_UREN = 8;
 const fmtDuur = m => m<60 ? `${m}m` : (m%60 ? `${String(m/60).replace('.',',')}u` : `${m/60}u`);
 const fmtUren = m => (Math.round(m/60*10)/10).toString().replace('.',',');
-let nieuwGebied = 'content';
 // Vaste afspraken in de agenda (Bryan, 19 okt 2026). dagen = getDay(): 1=ma … 5=vr
 const VASTE_AFSPRAKEN = [
   { k:'dagstart', dagen:[1,2,3,5], van:'08:30', tot:'09:00', titel:'Dagstart', ico:'🌅', gebied:'overig',
     txt:'o.a. Meta-advertenties bespreken — aanpassingen en dagtaken gaan als taken in de agenda' },
   { k:'weekendcheck', dagen:[5], van:'15:30', tot:'16:00', titel:'Weekendcheck Meta-advertenties', ico:'🔍', gebied:'ads',
     txt:'staan alle advertenties en budgetten goed voor het weekend?' },
+  { k:'afsluiting', dagen:[1,2,3,5], van:'16:45', tot:'17:00', titel:'Dagafsluiting', ico:'🔔', gebied:'overig',
+    txt:'taken afvinken of doorschuiven naar de volgende werkdag' },
 ];
+const tMin = hm => { const [h,m] = hm.split(':').map(Number); return h*60+m; };
+const tStr = m => `${String(Math.floor(m/60)).padStart(2,'0')}:${String(m%60).padStart(2,'0')}`;
+const isoLokaal = d => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+function volgendeWerkdag(d){
+  const x = new Date(d+'T12:00:00');
+  do { x.setDate(x.getDate()+1); } while (!WERKDAGEN.includes(x.getDay()));
+  return isoLokaal(x);
+}
+const dagLabel = d => { const x = new Date(d+'T12:00:00'); return `${DAGNAMEN[x.getDay()]} ${x.getDate()} ${x.toLocaleDateString('nl-NL',{month:'short'})}`; };
+// Plant de taken van een dag achter elkaar in tussen de vaste blokken (afspraken + lunch).
+// Volgorde = volgorde van invoeren. Een taak mag over een pauze heen lopen.
+function dagIndeling(d){
+  const vast = afsprakenOp(d).map(a=>({ soort:'afspraak', a, van:tMin(a.van), tot:tMin(a.tot) }));
+  if (WERKDAGEN.includes(new Date(d+'T12:00:00').getDay()))
+    vast.push({ soort:'lunch', van:tMin(WERKTIJD.lunch[0]), tot:tMin(WERKTIJD.lunch[1]) });
+  vast.sort((a,b)=>a.van-b.van);
+  const eind = tMin(WERKTIJD.tot);
+  let cur = tMin(WERKTIJD.van);
+  const taken = [], past = [];
+  for (const t of (state.taken||[]).filter(x=>x.datum===d)) {
+    let rest = t.duur_min || 60, start = null;
+    const cur0 = cur; // past de taak niet, dan blijft deze ruimte vrij voor kleinere taken erna
+    while (rest > 0) {
+      const blok = vast.find(b=>cur>=b.van && cur<b.tot);
+      if (blok) { cur = blok.tot; continue; }
+      const volgende = Math.min(eind, ...vast.filter(b=>b.van>cur).map(b=>b.van));
+      if (cur >= eind) break;
+      const stuk = Math.min(rest, volgende - cur);
+      if (start===null) start = cur;
+      cur += stuk; rest -= stuk;
+    }
+    if (rest > 0) { past.push(t); cur = cur0; } else taken.push({ soort:'taak', t, van:start, tot:cur });
+  }
+  const bezet = vast.reduce((s,b)=>s+(b.tot-b.van),0) + taken.reduce((s,x)=>s+(x.t.duur_min||60),0);
+  return { blokken: [...vast, ...taken].sort((a,b)=>a.van-b.van), past, vrijMin: Math.max(0, eind - tMin(WERKTIJD.van) - bezet) };
+}
+async function schuifDoor(ids, naar){
+  for (const id of ids) await sb.from('mkt_taken').update({ datum: naar }).eq('id', id);
+  toast(`${ids.length} ${ids.length>1?'taken':'taak'} doorgeschoven naar ${dagLabel(naar)}`);
+  await loadFromDB(); render();
+  if (document.getElementById('afsl')) toonAfsluiting(true);
+}
+// ── Dagafsluiting (16:45): openstaande taken van vandaag afvinken of doorschuiven ──
+// Werkt zolang het marketingbord open staat (tabblad mag op de achtergrond): pop-up in de app
+// en, als meldingen aanstaan, een systeemmelding. Eén keer per dag; "later" vraagt het over 30 min opnieuw.
+const AFSL_KEY = 'mkt_afsluiting';
+function toonAfsluiting(force=false){
+  const today = todayISO();
+  const open = (state.taken||[]).filter(t=>t.datum===today && !t.klaar);
+  document.getElementById('afsl')?.remove();
+  if (!open.length) {
+    if (force) toast('✅ Alles van vandaag is af — mooi werk!');
+    try { localStorage.setItem(AFSL_KEY, today); } catch(e) {}
+    return;
+  }
+  const naar = volgendeWerkdag(today);
+  const ov = document.createElement('div');
+  ov.id = 'afsl'; ov.className = 'afsl-ov';
+  ov.innerHTML = `<div class="afsl">
+    <h3>🔔 Dagafsluiting — heb je alles af?</h3>
+    <p>Nog <b>${open.length}</b> ${open.length>1?'taken':'taak'} open van vandaag. Vink af wat klaar is; de rest schuift door naar <b>${dagLabel(naar)}</b>.</p>
+    ${open.map(t=>`<div class="afsl-rij" style="--gc:${gebied(t.gebied).c}">
+      <span>${esc(t.tekst)} <small>${fmtDuur(t.duur_min||60)}</small></span>
+      <button class="qbtn" data-afok="${t.id}">✓ Af</button>
+      <button class="qbtn" data-afdoor="${t.id}">→ ${DAGNAMEN[new Date(naar+'T12:00:00').getDay()]}</button>
+    </div>`).join('')}
+    <div class="afsl-knoppen">
+      <button class="bigbtn" id="afsl_alles">Rest doorschuiven naar ${dagLabel(naar)}</button>
+      <button class="bigbtn sec" id="afsl_later">Later</button>
+    </div>
+  </div>`;
+  document.body.appendChild(ov);
+  ov.querySelectorAll('[data-afok]').forEach(b=>b.onclick=async()=>{ await toggleTaak(b.dataset.afok, true); toonAfsluiting(true); });
+  ov.querySelectorAll('[data-afdoor]').forEach(b=>b.onclick=()=>schuifDoor([b.dataset.afdoor], naar));
+  ov.querySelector('#afsl_alles').onclick = ()=>schuifDoor(open.map(t=>t.id), naar);
+  ov.querySelector('#afsl_later').onclick = ()=>{ ov.remove(); _afslLater = Date.now(); };
+}
+let _afslLater = 0, _afslGemeld = '';
+function checkAfsluiting(){
+  const nu = new Date(), today = todayISO();
+  if (document.getElementById('app')?.style.display==='none' || !state.taken) return;
+  if (!WERKDAGEN.includes(nu.getDay())) return;
+  const afs = VASTE_AFSPRAKEN.find(a=>a.k==='afsluiting');
+  if (nu.getHours()*60+nu.getMinutes() < tMin(afs.van)) return;
+  let gedaan = ''; try { gedaan = localStorage.getItem(AFSL_KEY)||''; } catch(e) {}
+  if (gedaan===today || document.getElementById('afsl') || Date.now()-_afslLater < 30*60e3) return;
+  const open = state.taken.filter(t=>t.datum===today && !t.klaar).length;
+  if (!open) return;
+  if (_afslGemeld!==today && 'Notification' in window && Notification.permission==='granted') {
+    new Notification('🔔 Dagafsluiting', { body:`Nog ${open} ${open>1?'taken':'taak'} open — afvinken of doorschuiven?` });
+    _afslGemeld = today;
+  }
+  toonAfsluiting();
+}
+setInterval(checkAfsluiting, 60e3);
 const afsprakenOp = d => VASTE_AFSPRAKEN.filter(a=>a.dagen.includes(new Date(d+'T12:00:00').getDay()));
 const afspraakMin = a => { const [h1,m1]=a.van.split(':').map(Number), [h2,m2]=a.tot.split(':').map(Number); return (h2*60+m2)-(h1*60+m1); };
 let dsGebied = 'ads', dsDatum = null;
@@ -1813,28 +1943,23 @@ function adviesAlsTaak(b){
 }
 async function addTaken(regels, datum, gb, duur){
   const bestaand = new Set((state.taken||[]).filter(t=>t.datum===datum).map(t=>t.tekst));
-  const nieuw = regels.map(r=>r.trim()).filter(r=>r && !bestaand.has(r));
+  // Optioneel per regel een tijd erachter: "Script schrijven 1,5u" / "Mail Tjeerd 15m"
+  const parse = r => {
+    const m = r.match(/\s+(\d+(?:[.,]\d+)?)\s*(u|uur|m|min)\.?$/i);
+    if (!m) return { tekst:r, duur };
+    const n = Number(m[1].replace(',','.'));
+    return { tekst: r.slice(0, m.index).trim(), duur: Math.max(5, Math.round(/^u/i.test(m[2]) ? n*60 : n)) };
+  };
+  const nieuw = regels.map(r=>r.trim()).filter(Boolean).map(parse).filter(x=>x.tekst && !bestaand.has(x.tekst));
   if (!nieuw.length) { toast('Niets nieuws om toe te voegen'); return; }
-  const basis = r => ({ tekst:r, datum, door: currentProfile?.naam||'' });
-  let { error } = await sb.from('mkt_taken').insert(nieuw.map(r=>({ ...basis(r), gebied:gb, duur_min:duur })));
+  const basis = x => ({ tekst:x.tekst, datum, door: currentProfile?.naam||'' });
+  let { error } = await sb.from('mkt_taken').insert(nieuw.map(x=>({ ...basis(x), gebied:gb, duur_min:x.duur })));
   if (error && state.takenV2 !== false) {
     ({ error } = await sb.from('mkt_taken').insert(nieuw.map(basis)));
     if (!error) state.takenV2 = false;
   }
   if (error) { toast('Opslaan mislukt — is de taken-migratie al gedraaid?'); return; }
-  toast(`${nieuw.length} taak${nieuw.length>1?'en':''} in je agenda gezet (${fmtD(datum)})`);
-  await loadFromDB(); render();
-}
-async function addTaak(tekst, datum, gb, duur){
-  if (!tekst.trim()) return;
-  const basis = { tekst:tekst.trim(), datum: datum||todayISO(), door: currentProfile?.naam||'' };
-  let { error } = await sb.from('mkt_taken').insert({ ...basis, gebied: gb||'overig', duur_min: duur||60 });
-  if (error && state.takenV2 !== false) {
-    // kolommen bestaan nog niet → zonder gebied/duur opslaan, zodat de taak niet verloren gaat
-    ({ error } = await sb.from('mkt_taken').insert(basis));
-    if (!error) { state.takenV2 = false; toast('Taak opgeslagen — taakgebied en tijd werken pas na migratie-taakgebieden.sql'); }
-  }
-  if (error) { toast('Opslaan mislukt — is de taken-migratie al gedraaid?'); return; }
+  toast(`${nieuw.length} ${nieuw.length>1?'taken':'taak'} ingepland op ${dagLabel(datum)}`);
   await loadFromDB(); render();
 }
 async function updTaak(id, patch){
@@ -1853,12 +1978,13 @@ async function delTaak(id){
   state.taken = (state.taken||[]).filter(x=>x.id!==id);
   render();
 }
-function taakRij(t){
+function taakRij(t, tijd='', schuif=false){
   const g = gebied(t.gebied);
   const v2 = 'gebied' in t;
   return `<div class="taakrow${t.klaar?' klaar':''}" style="--gc:${g.c}">
     <input type="checkbox" data-tgl="${t.id}" ${t.klaar?'checked':''}>
-    <span class="tt">${esc(t.tekst)}</span>
+    <span class="tt">${tijd?`<b class="ttijd">${tijd}</b> `:''}${esc(t.tekst)}</span>
+    ${schuif && !t.klaar ? `<button class="dchip" data-tschuif="${t.id}" title="Doorschuiven naar de volgende werkdag">→ ${DAGNAMEN[new Date(volgendeWerkdag(t.datum)+'T12:00:00').getDay()]}</button>`:''}
     ${v2?`<button class="gchip" data-tgeb="${t.id}" title="${esc(g.n)} — klik om het taakgebied te wisselen">${esc(g.kort)}</button>
     <button class="dchip" data-tduur="${t.id}" title="Geschatte tijd — klik om te wijzigen">${fmtDuur(t.duur_min||60)}</button>`:''}
     <button class="tdel" data-tdel="${t.id}" title="verwijderen">✕</button>
@@ -1888,32 +2014,54 @@ function weekBalansHtml(dagen){
     </div>`).join('')}
     <div class="toel" style="margin:8px 0 0;font-size:11.5px">Telt je eigen taken met hun geschatte tijd plus de vaste afspraken (dagstart, weekendcheck). Licht = gepland, donker = afgerond. Klik op het gekleurde chipje van een taak om het gebied te wisselen, op de tijd om die aan te passen.</div>`;
 }
-// Dagstart (08:30–09:00): Meta-punten bespreken en de dagtaken invoeren → taken in de agenda
-function dagstartBlokHtml(dagen){
+// Dagplanning: per dag taken invoeren → automatisch over de dag ingepland (tijdlijn),
+// met de Meta-punten uit de dagstart erbij.
+function dagplanningHtml(dagen){
   const today = todayISO();
-  const metDs = dagen.filter(d=>afsprakenOp(d).some(a=>a.k==='dagstart'));
-  if (!dsDatum || !dagen.includes(dsDatum)) dsDatum = metDs.find(d=>d>=today) || metDs[0] || dagen[0];
+  const werk = dagen.filter(d=>WERKDAGEN.includes(new Date(d+'T12:00:00').getDay()));
+  if (!dsDatum || !dagen.includes(dsDatum)) dsDatum = werk.find(d=>d>=today) || werk[0] || dagen[0];
+  const d = dsDatum;
+  const ind = dagIndeling(d);
   const open = metaTeBespreken();
-  const alGepland = new Set((state.taken||[]).filter(t=>t.datum===dsDatum).map(t=>t.tekst));
+  const alGepland = new Set((state.taken||[]).filter(t=>t.datum===d).map(t=>t.tekst));
   const rood = adWaakhond().filter(a=>a.sev==='rood').length;
   const v2 = state.takenV2!==false;
-  return `<div class="inzbox dagstart" id="ds_box"><h4>🌅 Dagstart · 08:30–09:00</h4>
-    <div class="ds-dag">voor
-      <select id="ds_datum">${metDs.map(d=>`<option value="${d}"${d===dsDatum?' selected':''}>${DAGNAMEN[new Date(d+'T12:00:00').getDay()]} ${fmtD(d).slice(0,5)}${d===today?' (vandaag)':''}</option>`).join('')}</select>
-    </div>
-    <div class="ds-kop">📣 Meta te bespreken</div>
-    ${open.length||rood ? `
-      ${rood?`<div class="planrow gemist" data-goto="prestatie" style="cursor:pointer"><span>🐕</span><span class="pt"><b>${rood} advertentie${rood>1?'s':''}</b> met rood waakhond-advies</span></div>`:''}
-      ${open.slice(0,6).map(b=>`<div class="ds-advies"><span>${esc(adviesAlsTaak(b))}</span>${alGepland.has(adviesAlsTaak(b))?`<span class="ds-ok">✓ in agenda</span>`:`<button class="qbtn" data-dsadv="${b.id}" title="Als taak in de agenda zetten">＋ taak</button>`}</div>`).join('')}
-      ${open.length>6?`<div class="toel" style="margin:4px 0 0">…en nog ${open.length-6} in Prestatie</div>`:''}
-      ${open.filter(b=>!alGepland.has(adviesAlsTaak(b))).length>1?`<button class="qbtn" id="ds_alleadv" style="margin-top:6px">＋ Alle open adviezen als taak</button>`:''}`
-    : `<div class="toel" style="margin:0 0 4px">Geen open Meta-adviezen — niets te bespreken.</div>`}
-    <div class="ds-kop">✅ Taken voor deze dag <small>één per regel</small></div>
-    <textarea id="ds_taken" rows="4" placeholder="Bijv.&#10;Budget vacatureset De Gier naar €12&#10;Nieuwe hook testen heftruck-video&#10;Script Meet the team schrijven"></textarea>
-    ${v2?`<div class="gkeuze" style="margin:6px 0">${GEBIEDEN.map(g=>`<button class="kchip${g.k===dsGebied?' on':''}" data-dsgeb="${g.k}" style="--kc:${g.c}">${esc(g.kort)}</button>`).join('')}</div>`:''}
-    <div style="display:flex;gap:7px;align-items:center">
-      ${v2?`<select id="ds_duur" title="Geschatte tijd per taak">${DUREN.map(m=>`<option value="${m}"${m===30?' selected':''}>${fmtDuur(m)} per taak</option>`).join('')}</select>`:''}
-      <button class="bigbtn" id="ds_zet" style="padding:8px 14px;font-size:13px">In agenda zetten</button>
+  const nOpen = (state.taken||[]).filter(t=>t.datum===d && !t.klaar).length;
+  return `<div class="inzbox dagplan" id="ds_box">
+    <h4 style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">📋 Dagplanning
+      <span class="dp-dagen">${werk.map(x=>`<button class="calnav${x===d?' on':''}" data-dpdag="${x}">${dagLabel(x)}${x===today?' · vandaag':''}</button>`).join('')}</span></h4>
+    <div class="dp-grid">
+      <div>
+        <div class="ds-kop">✅ Taken voor ${dagLabel(d)} <small>één per regel · tijd erachter mag: "Script schrijven 1,5u"</small></div>
+        <textarea id="ds_taken" rows="5" placeholder="Bijv.&#10;Budget vacatureset De Gier naar €12 15m&#10;Script Meet the team schrijven 1u&#10;Flyer magazijn ontwerpen 2u"></textarea>
+        ${v2?`<div class="gkeuze" style="margin:6px 0">${GEBIEDEN.map(g=>`<button class="kchip${g.k===dsGebied?' on':''}" data-dsgeb="${g.k}" style="--kc:${g.c}">${esc(g.kort)}</button>`).join('')}</div>`:''}
+        <div style="display:flex;gap:7px;align-items:center;flex-wrap:wrap">
+          ${v2?`<select id="ds_duur" title="Tijd per taak als je er geen achter zet">${DUREN.map(m=>`<option value="${m}"${m===30?' selected':''}>${fmtDuur(m)} per taak</option>`).join('')}</select>`:''}
+          <button class="bigbtn" id="ds_zet" style="padding:8px 14px;font-size:13px">Inplannen</button>
+        </div>
+        <div class="ds-kop" style="margin-top:14px">📣 Meta te bespreken in de dagstart</div>
+        ${open.length||rood ? `
+          ${rood?`<div class="planrow gemist" data-goto="prestatie" style="cursor:pointer"><span>🐕</span><span class="pt"><b>${rood} advertentie${rood>1?'s':''}</b> met rood waakhond-advies</span></div>`:''}
+          ${open.slice(0,6).map(b=>`<div class="ds-advies"><span>${esc(adviesAlsTaak(b))}</span>${alGepland.has(adviesAlsTaak(b))?`<span class="ds-ok">✓ ingepland</span>`:`<button class="qbtn" data-dsadv="${b.id}" title="Als taak inplannen">＋ taak</button>`}</div>`).join('')}
+          ${open.length>6?`<div class="toel" style="margin:4px 0 0">…en nog ${open.length-6} in Prestatie</div>`:''}
+          ${open.filter(b=>!alGepland.has(adviesAlsTaak(b))).length>1?`<button class="qbtn" id="ds_alleadv" style="margin-top:6px">＋ Alle open adviezen als taak</button>`:''}`
+        : `<div class="toel" style="margin:0 0 4px">Geen open Meta-adviezen — niets te bespreken.</div>`}
+      </div>
+      <div>
+        <div class="ds-kop">🕘 Zo ziet ${d===today?'je dag':dagLabel(d)} eruit <small>${WERKTIJD.van}–${WERKTIJD.tot} · nog ${fmtUren(ind.vrijMin)} uur vrij</small></div>
+        <div class="dp-lijn">
+          ${ind.blokken.map(b=>{
+            const tijd = `<span class="dp-tijd">${tStr(b.van)}–${tStr(b.tot)}</span>`;
+            if (b.soort==='lunch') return `<div class="dp-rij lunch">${tijd}<span>🥪 Lunch</span></div>`;
+            if (b.soort==='afspraak') return `<div class="dp-rij afspraak${b.a.k==='dagstart'?' ds':''}" data-afspraak="${b.a.k}" data-dag="${d}">${tijd}<span>${b.a.ico} <b>${esc(b.a.titel)}</b></span></div>`;
+            const pauze = (b.tot-b.van) > (b.t.duur_min||60) ? `<small class="dp-pauze">loopt door na de pauze</small>` : '';
+            return `<div class="dp-rij">${tijd}<div>${taakRij(b.t,'',true)}${pauze}</div></div>`;
+          }).join('')}
+          ${ind.past.length?`<div class="dp-past"><b>⚠ Past niet meer op ${dagLabel(d)}:</b>${ind.past.map(t=>taakRij(t,'',true)).join('')}</div>`:''}
+        </div>
+        ${d===today && nOpen ? `<button class="qbtn" id="dp_afsluiten" style="margin-top:8px">🔔 Dagafsluiting nu doen (${nOpen} open)</button>`:''}
+        ${'Notification' in window && Notification.permission==='default' ? `<button class="qbtn" id="dp_meldingen" style="margin-top:8px">🔔 Meldingen aanzetten</button>`:''}
+      </div>
     </div>
   </div>`;
 }
@@ -1936,7 +2084,7 @@ function renderWeek(){
       <button class="calnav" id="wk_prev">‹</button>
       <button class="calnav" id="wk_nu">Vandaag</button>
       <button class="calnav" id="wk_next">›</button>
-      <span style="font-size:11.5px;color:var(--muted)">${wkLabel?wkLabel+' · ':''}klik op een dag om een taak toe te voegen</span>
+      <span style="font-size:11.5px;color:var(--muted)">${wkLabel?wkLabel+' · ':''}klik op een dag om die te plannen</span>
     </div>
     <div class="wkgrid">
       ${dagen.map(d=>{
@@ -1945,7 +2093,10 @@ function renderWeek(){
         const taken = (T||[]).filter(t=>t.datum===d);
         const afs = afsprakenOp(d);
         const min = taken.reduce((s,t)=>s+(t.duur_min||0),0) + afs.reduce((s,a)=>s+afspraakMin(a),0);
+        const ind = dagIndeling(d);
         const tijdlijn = [
+          ...ind.blokken.filter(b=>b.soort==='taak').map(b=>({ t:tStr(b.van), html: taakRij(b.t, tStr(b.van)) })),
+          ...ind.past.map(t=>({ t:'99', html: taakRij(t, '⚠') })),
           ...afs.map(a=>({ t:a.van, html:`<div class="wkafspraak${a.k==='dagstart'?' ds':''}" data-afspraak="${a.k}" data-dag="${d}" title="${esc(a.txt)}"><b>${a.van}–${a.tot}</b> ${a.ico} ${esc(a.titel)}${a.k==='dagstart'&&d===today&&metaTeBespreken().length?` <span class="wkbadge">${metaTeBespreken().length}</span>`:''}</div>` })),
           ...posts.map(p=>({ t:p.tijd||'99', html:`<div class="wkpost${PUB(p)?' done':''}${p.fase==='Ingepland'&&d<today?' missed':''}" data-open="${p.id}" style="--kan:${kanaalKleur(p.kanaal)}" title="${esc(p.titel)} · ${esc(p.kanaal)} · ${p.fase}">${p.tijd?p.tijd.slice(0,5)+' ':''}${esc(p.titel)}</div>` })),
         ].sort((a,b)=>a.t.localeCompare(b.t));
@@ -1956,24 +2107,15 @@ function renderWeek(){
           <div class="wk-uren${min>DAG_UREN*60?' vol':''}" title="${fmtUren(min)} van ${DAG_UREN} uur gepland"><i style="width:${vol}%"></i></div>
           <div class="wk-urentxt${min>DAG_UREN*60?' vol':''}">${min?`${fmtUren(min)} / ${DAG_UREN} uur`:vrij?'vrije dag':'nog niets gepland'}</div>
           ${tijdlijn.map(x=>x.html).join('')}
-          ${taken.map(taakRij).join('')}
         </div>`;
       }).join('')}
     </div>
-    <div class="taakadd wk-form" id="tk_form">
-      ${state.takenV2!==false?`<div class="gkeuze">${GEBIEDEN.map(g=>`<button class="kchip${g.k===nieuwGebied?' on':''}" data-ngeb="${g.k}" style="--kc:${g.c}">${esc(g.n)}</button>`).join('')}</div>`:''}
-      <input type="text" id="tk_tekst" placeholder="Taak toevoegen… (bijv. filmdag De Gier voorbereiden)">
-      <input type="date" id="tk_datum" value="${weekOffset===0?today:dagen[0]}">
-      ${state.takenV2!==false?`<select id="tk_duur" title="Geschatte tijd">${DUREN.map(m=>`<option value="${m}"${m===60?' selected':''}>${fmtDuur(m)}</option>`).join('')}</select>`:''}
-      <button class="qbtn" id="tk_add">＋ toevoegen</button>
-    </div>
   </div>
+  ${dagplanningHtml(dagen)}
   <div class="inzgrid">
-    ${dagstartBlokHtml(dagen)}
     ${weekOffset===0 ? `<div class="inzbox"><h4>☀️ Vandaag — dit staat er voor je klaar</h4>
       ${auto.map(i=>`<div class="planrow${i.rood?' gemist':''}${i.done?' taakklaar':''}" ${i.open?`data-open="${i.open}"`:''} ${i.goto?`data-goto="${i.goto}"`:''} style="cursor:pointer"><span>${i.ico}</span><span class="pt">${i.txt}</span></div>`).join('')}
-      ${(T||[]).filter(t=>t.datum===today).map(taakRij).join('')}
-      ${openOud.length?`<div style="margin-top:8px;font-size:12px;font-weight:700;color:#a33">⏰ Blijven liggen van eerder:</div>${openOud.map(taakRij).join('')}`:''}
+      ${openOud.length?`<div style="margin-top:8px;font-size:12px;font-weight:700;color:#a33;display:flex;justify-content:space-between;align-items:center">⏰ Blijven liggen van eerder: <button class="qbtn" id="oud_naarvandaag">Alles naar vandaag</button></div>${openOud.map(t=>taakRij(t)).join('')}`:''}
     </div>`:''}
     <div class="inzbox"><h4>⚖️ Weekbalans ${wkLabel?'— '+wkLabel:''}</h4>
       ${state.takenV2===false ? `<div class="advies rood" style="margin:0"><b>⚙️ Eén keer instellen</b>Voor taakgebieden en tijd moet <b>supabase/migratie-taakgebieden.sql</b> (uit de repo) in de Supabase SQL Editor gedraaid worden. Je taken blijven gewoon werken.</div>` : weekBalansHtml(dagen)}
@@ -1986,23 +2128,24 @@ function renderWeek(){
   el.querySelector('#wk_prev').onclick = ()=>{ weekOffset--; render(); };
   el.querySelector('#wk_next').onclick = ()=>{ weekOffset++; render(); };
   el.querySelector('#wk_nu').onclick = ()=>{ weekOffset=0; render(); };
-  const addBtn = el.querySelector('#tk_add');
-  if (addBtn) {
-    const doe = ()=>{ addTaak(document.getElementById('tk_tekst').value, document.getElementById('tk_datum').value,
-      nieuwGebied, Number(document.getElementById('tk_duur')?.value)||60); };
-    addBtn.onclick = doe;
-    el.querySelector('#tk_tekst').addEventListener('keydown', e=>{ if(e.key==='Enter') doe(); });
-  }
-  el.querySelectorAll('[data-ngeb]').forEach(b=>b.onclick=()=>{
-    nieuwGebied = b.dataset.ngeb;
-    el.querySelectorAll('[data-ngeb]').forEach(x=>x.classList.toggle('on', x===b));
-  });
-  // ＋ taak op een dag → formulier onderaan op die dag zetten (met gebied en tijd erbij)
+  // Klik op een dag → die dag in de dagplanning
   el.querySelectorAll('[data-dagadd]').forEach(b=>b.onclick=()=>{
-    document.getElementById('tk_datum').value = b.dataset.dagadd;
-    document.getElementById('tk_form').scrollIntoView({ behavior:'smooth', block:'center' });
-    document.getElementById('tk_tekst').focus({ preventScroll:true });
+    dsDatum = b.dataset.dagadd; render();
+    document.getElementById('ds_box').scrollIntoView({ behavior:'smooth', block:'start' });
+    document.getElementById('ds_taken').focus({ preventScroll:true });
   });
+  el.querySelectorAll('[data-dpdag]').forEach(b=>b.onclick=()=>{ dsDatum = b.dataset.dpdag; render(); });
+  el.querySelectorAll('[data-tschuif]').forEach(b=>b.onclick=(e)=>{
+    e.stopPropagation();
+    const t = state.taken.find(x=>x.id===b.dataset.tschuif);
+    schuifDoor([t.id], volgendeWerkdag(t.datum));
+  });
+  const oudBtn = el.querySelector('#oud_naarvandaag');
+  if (oudBtn) oudBtn.onclick = ()=> schuifDoor(openOud.map(t=>t.id), today);
+  const afBtn = el.querySelector('#dp_afsluiten');
+  if (afBtn) afBtn.onclick = ()=> toonAfsluiting(true);
+  const mBtn = el.querySelector('#dp_meldingen');
+  if (mBtn) mBtn.onclick = async ()=>{ await Notification.requestPermission(); render(); };
   el.querySelectorAll('[data-tgeb]').forEach(b=>b.onclick=(e)=>{
     e.stopPropagation();
     const t = state.taken.find(x=>x.id===b.dataset.tgeb);
@@ -2010,8 +2153,6 @@ function renderWeek(){
     updTaak(t.id, { gebied: GEBIEDEN[(i+1)%GEBIEDEN.length].k });
   });
   // Dagstart-blok
-  const dsSel = el.querySelector('#ds_datum');
-  if (dsSel) dsSel.onchange = ()=>{ dsDatum = dsSel.value; };
   el.querySelectorAll('[data-dsgeb]').forEach(b=>b.onclick=()=>{
     dsGebied = b.dataset.dsgeb;
     el.querySelectorAll('[data-dsgeb]').forEach(x=>x.classList.toggle('on', x===b));
@@ -2029,6 +2170,7 @@ function renderWeek(){
   el.querySelectorAll('[data-afspraak]').forEach(a=>a.onclick=(e)=>{
     e.stopPropagation();
     if (a.dataset.afspraak==='weekendcheck') { view='prestatie'; localStorage.setItem('mkt_view',view); render(); return; }
+    if (a.dataset.afspraak==='afsluiting' && a.dataset.dag===todayISO()) { toonAfsluiting(true); return; }
     dsDatum = a.dataset.dag; render();
     const box = document.getElementById('ds_box');
     box.scrollIntoView({ behavior:'smooth', block:'center' });
