@@ -77,6 +77,19 @@ nav.fases{background:#20301a;border-bottom:1px solid #33421f;padding:0 18px;disp
 .balansrij .bbar div.af{opacity:1}
 .balansrij .buren{text-align:right;color:var(--muted);font-variant-numeric:tabular-nums}
 @media (max-width:560px){ .balansrij{grid-template-columns:110px 1fr 70px} }
+/* Vaste afspraken + dagstart */
+.wkafspraak{font-size:11px;font-weight:600;color:#3f4a2a;background:#eef1e6;border:1px dashed #b9c49a;border-radius:6px;padding:3px 7px;line-height:1.35;cursor:pointer}
+.wkafspraak.ds{background:#fff6dc;border-color:#e2c46d;color:#6b5210}
+.wkafspraak b{font-weight:800}
+.wkbadge{display:inline-block;background:var(--red);color:#fff;border-radius:999px;font-size:10px;padding:0 6px;margin-left:2px}
+.dagstart textarea{width:100%;border:1px solid var(--line);border-radius:9px;padding:8px 10px;font:inherit;font-size:13px;resize:vertical}
+.dagstart select{padding:6px 8px;border:1px solid var(--line);border-radius:8px;font:inherit;font-size:12.5px;background:#fff}
+.ds-dag{font-size:12.5px;color:var(--muted);margin:-4px 0 6px;display:flex;gap:6px;align-items:center}
+.ds-kop{font-size:12px;font-weight:800;margin:10px 0 4px}
+.ds-kop small{font-weight:500;color:var(--muted)}
+.ds-advies{display:flex;gap:8px;align-items:flex-start;justify-content:space-between;font-size:12.5px;padding:4px 0;border-bottom:1px solid #eef0e6}
+.ds-advies button{flex:none}
+.ds-ok{flex:none;font-size:11.5px;font-weight:700;color:var(--green)}
 /* Weekagenda bovenaan Mijn week (zelfde stijl als de kalender in Planning) */
 .wkagenda{margin-bottom:12px}
 .wkgrid{display:grid;grid-template-columns:repeat(7,minmax(0,1fr))}
@@ -1649,6 +1662,7 @@ function weekDagen(offset){
 function autoTakenVandaag(){
   const today = todayISO();
   const items = [];
+  afsprakenOp(today).forEach(a=>items.push({ ico:a.ico, txt:`<b>${a.van}–${a.tot} ${esc(a.titel)}</b> — ${esc(a.txt)}`, goto: a.k==='weekendcheck' ? 'prestatie' : null }));
   const gepost = state.posts.some(p=>p.datum===today && (PUB(p)||p.fase==='Ingepland'));
   items.push({ ico: gepost?'✅':'✍️', txt:`Post van vandaag — <b>${esc(themaVandaag())}</b>`, done:gepost, goto:'creatie' });
   const rt = WEEKRITME[new Date().getDay()];
@@ -1688,6 +1702,41 @@ const DAG_UREN = 8;
 const fmtDuur = m => m<60 ? `${m}m` : (m%60 ? `${String(m/60).replace('.',',')}u` : `${m/60}u`);
 const fmtUren = m => (Math.round(m/60*10)/10).toString().replace('.',',');
 let nieuwGebied = 'content';
+// Vaste afspraken in de agenda (Bryan, 19 okt 2026). dagen = getDay(): 1=ma … 5=vr
+const VASTE_AFSPRAKEN = [
+  { k:'dagstart', dagen:[1,2,3,4,5], van:'08:30', tot:'09:00', titel:'Dagstart', ico:'🌅', gebied:'overig',
+    txt:'o.a. Meta-advertenties bespreken — aanpassingen en dagtaken gaan als taken in de agenda' },
+  { k:'weekendcheck', dagen:[5], van:'15:30', tot:'16:00', titel:'Weekendcheck Meta-advertenties', ico:'🔍', gebied:'ads',
+    txt:'staan alle advertenties en budgetten goed voor het weekend?' },
+];
+const afsprakenOp = d => VASTE_AFSPRAKEN.filter(a=>a.dagen.includes(new Date(d+'T12:00:00').getDay()));
+const afspraakMin = a => { const [h1,m1]=a.van.split(':').map(Number), [h2,m2]=a.tot.split(':').map(Number); return (h2*60+m2)-(h1*60+m1); };
+let dsGebied = 'ads', dsDatum = null;
+// Open Meta-punten voor de dagstart: agent-adviezen die nog open staan
+function metaTeBespreken(){
+  return state.besluiten.filter(b=>b.door==='Claude-agent' && b.status==='open' && !(b.advertentie||'').startsWith('__'));
+}
+// "Doen: …"-zin uit een agent-advies halen als taaktekst
+function adviesAlsTaak(b){
+  const note = (b.note||'').replace(/^🤖\s*/,'');
+  const doen = (note.match(/Doen:\s*([^\n]+)/)||[])[1];
+  const kern = (doen || note.split('\n')[0]).trim().replace(/\s+/g,' ');
+  return `Meta${b.campagne?' · '+b.campagne:''}: ${kern}`.slice(0,160);
+}
+async function addTaken(regels, datum, gb, duur){
+  const bestaand = new Set((state.taken||[]).filter(t=>t.datum===datum).map(t=>t.tekst));
+  const nieuw = regels.map(r=>r.trim()).filter(r=>r && !bestaand.has(r));
+  if (!nieuw.length) { toast('Niets nieuws om toe te voegen'); return; }
+  const basis = r => ({ tekst:r, datum, door: currentProfile?.naam||'' });
+  let { error } = await sb.from('mkt_taken').insert(nieuw.map(r=>({ ...basis(r), gebied:gb, duur_min:duur })));
+  if (error && state.takenV2 !== false) {
+    ({ error } = await sb.from('mkt_taken').insert(nieuw.map(basis)));
+    if (!error) state.takenV2 = false;
+  }
+  if (error) { toast('Opslaan mislukt — is de taken-migratie al gedraaid?'); return; }
+  toast(`${nieuw.length} taak${nieuw.length>1?'en':''} in je agenda gezet (${fmtD(datum)})`);
+  await loadFromDB(); render();
+}
 async function addTaak(tekst, datum, gb, duur){
   if (!tekst.trim()) return;
   const basis = { tekst:tekst.trim(), datum: datum||todayISO(), door: currentProfile?.naam||'' };
@@ -1729,7 +1778,9 @@ function taakRij(t){
 }
 // Uren per taakgebied voor een reeks dagen (alleen eigen taken; posts en auto-taken tellen niet mee)
 function weekBalansHtml(dagen){
-  const taken = (state.taken||[]).filter(t=>dagen.includes(t.datum));
+  // vaste afspraken tellen mee als 'taak' (afgerond zodra de dag voorbij is)
+  const vast = dagen.flatMap(d=>afsprakenOp(d).map(a=>({ gebied:a.gebied, duur_min:afspraakMin(a), klaar: d<todayISO() })));
+  const taken = (state.taken||[]).filter(t=>dagen.includes(t.datum)).concat(vast);
   const per = GEBIEDEN.map(g=>{
     const ts = taken.filter(t=>gebied(t.gebied).k===g.k);
     return { g, gepland: ts.reduce((s,t)=>s+(t.duur_min||60),0), af: ts.filter(t=>t.klaar).reduce((s,t)=>s+(t.duur_min||60),0), n: ts.length };
@@ -1747,7 +1798,36 @@ function weekBalansHtml(dagen){
       <span class="bbar"><div style="width:${totaal?p.gepland/totaal*100:0}%"></div><div class="af" style="width:${totaal?p.af/totaal*100:0}%"></div></span>
       <span class="buren">${p.n?`${fmtUren(p.gepland)} u · ${totaal?Math.round(p.gepland/totaal*100):0}%`:'—'}</span>
     </div>`).join('')}
-    <div class="toel" style="margin:8px 0 0;font-size:11.5px">Telt je eigen taken met hun geschatte tijd. Licht = gepland, donker = afgerond. Klik op het gekleurde chipje van een taak om het gebied te wisselen, op de tijd om die aan te passen.</div>`;
+    <div class="toel" style="margin:8px 0 0;font-size:11.5px">Telt je eigen taken met hun geschatte tijd plus de vaste afspraken (dagstart, weekendcheck). Licht = gepland, donker = afgerond. Klik op het gekleurde chipje van een taak om het gebied te wisselen, op de tijd om die aan te passen.</div>`;
+}
+// Dagstart (08:30–09:00): Meta-punten bespreken en de dagtaken invoeren → taken in de agenda
+function dagstartHtml(dagen){
+  const today = todayISO();
+  const metDs = dagen.filter(d=>afsprakenOp(d).some(a=>a.k==='dagstart'));
+  if (!dsDatum || !dagen.includes(dsDatum)) dsDatum = metDs.find(d=>d>=today) || metDs[0] || dagen[0];
+  const open = metaTeBespreken();
+  const alGepland = new Set((state.taken||[]).filter(t=>t.datum===dsDatum).map(t=>t.tekst));
+  const rood = adWaakhond().filter(a=>a.sev==='rood').length;
+  const v2 = state.takenV2!==false;
+  return `<div class="inzbox dagstart" id="ds_box"><h4>🌅 Dagstart · 08:30–09:00</h4>
+    <div class="ds-dag">voor
+      <select id="ds_datum">${metDs.map(d=>`<option value="${d}"${d===dsDatum?' selected':''}>${DAGNAMEN[new Date(d+'T12:00:00').getDay()]} ${fmtD(d).slice(0,5)}${d===today?' (vandaag)':''}</option>`).join('')}</select>
+    </div>
+    <div class="ds-kop">📣 Meta te bespreken</div>
+    ${open.length||rood ? `
+      ${rood?`<div class="planrow gemist" data-goto="prestatie" style="cursor:pointer"><span>🐕</span><span class="pt"><b>${rood} advertentie${rood>1?'s':''}</b> met rood waakhond-advies</span></div>`:''}
+      ${open.slice(0,6).map(b=>`<div class="ds-advies"><span>${esc(adviesAlsTaak(b))}</span>${alGepland.has(adviesAlsTaak(b))?`<span class="ds-ok">✓ in agenda</span>`:`<button class="qbtn" data-dsadv="${b.id}" title="Als taak in de agenda zetten">＋ taak</button>`}</div>`).join('')}
+      ${open.length>6?`<div class="toel" style="margin:4px 0 0">…en nog ${open.length-6} in Prestatie</div>`:''}
+      ${open.filter(b=>!alGepland.has(adviesAlsTaak(b))).length>1?`<button class="qbtn" id="ds_alleadv" style="margin-top:6px">＋ Alle open adviezen als taak</button>`:''}`
+    : `<div class="toel" style="margin:0 0 4px">Geen open Meta-adviezen — niets te bespreken.</div>`}
+    <div class="ds-kop">✅ Taken voor deze dag <small>één per regel</small></div>
+    <textarea id="ds_taken" rows="4" placeholder="Bijv.&#10;Budget vacatureset De Gier naar €12&#10;Nieuwe hook testen heftruck-video&#10;Script Meet the team schrijven"></textarea>
+    ${v2?`<div class="gkeuze" style="margin:6px 0">${GEBIEDEN.map(g=>`<button class="kchip${g.k===dsGebied?' on':''}" data-dsgeb="${g.k}" style="--kc:${g.c}">${esc(g.kort)}</button>`).join('')}</div>`:''}
+    <div style="display:flex;gap:7px;align-items:center">
+      ${v2?`<select id="ds_duur" title="Geschatte tijd per taak">${DUREN.map(m=>`<option value="${m}"${m===30?' selected':''}>${fmtDuur(m)} per taak</option>`).join('')}</select>`:''}
+      <button class="bigbtn" id="ds_zet" style="padding:8px 14px;font-size:13px">In agenda zetten</button>
+    </div>
+  </div>`;
 }
 function renderWeek(){
   const el = document.getElementById('week');
@@ -1776,14 +1856,19 @@ function renderWeek(){
         const dt = new Date(d+'T12:00:00'); const dow = dt.getDay();
         const posts = state.posts.filter(p=>p.datum===d && (p.fase==='Ingepland'||PUB(p))).sort((a,b)=>(a.tijd||'').localeCompare(b.tijd||''));
         const taken = (T||[]).filter(t=>t.datum===d);
-        const min = taken.reduce((s,t)=>s+(t.duur_min||0),0);
+        const afs = afsprakenOp(d);
+        const min = taken.reduce((s,t)=>s+(t.duur_min||0),0) + afs.reduce((s,a)=>s+afspraakMin(a),0);
+        const tijdlijn = [
+          ...afs.map(a=>({ t:a.van, html:`<div class="wkafspraak${a.k==='dagstart'?' ds':''}" data-afspraak="${a.k}" data-dag="${d}" title="${esc(a.txt)}"><b>${a.van}–${a.tot}</b> ${a.ico} ${esc(a.titel)}${a.k==='dagstart'&&d===today&&metaTeBespreken().length?` <span class="wkbadge">${metaTeBespreken().length}</span>`:''}</div>` })),
+          ...posts.map(p=>({ t:p.tijd||'99', html:`<div class="wkpost${PUB(p)?' done':''}${p.fase==='Ingepland'&&d<today?' missed':''}" data-open="${p.id}" style="--kan:${kanaalKleur(p.kanaal)}" title="${esc(p.titel)} · ${esc(p.kanaal)} · ${p.fase}">${p.tijd?p.tijd.slice(0,5)+' ':''}${esc(p.titel)}</div>` })),
+        ].sort((a,b)=>a.t.localeCompare(b.t));
         const vol = Math.min(100, min/(DAG_UREN*60)*100);
         return `<div class="wkcell${d===today?' today':''}${d<today?' past':''}" data-dagadd="${d}">
           <div class="wk-kop"><b>${DAGNAMEN[dow]}</b> <span>${dt.getDate()} ${dt.toLocaleDateString('nl-NL',{month:'short'})}</span>${d===today?'<em>vandaag</em>':''}</div>
           <div class="wk-uren${min>DAG_UREN*60?' vol':''}" title="${fmtUren(min)} van ${DAG_UREN} uur gepland"><i style="width:${vol}%"></i></div>
           <div class="wk-urentxt${min>DAG_UREN*60?' vol':''}">${min?`${fmtUren(min)} / ${DAG_UREN} uur`:'nog niets gepland'}</div>
           <div class="dk-thema">📅 ${esc((wkTh[dow]||'').split('—')[0].trim())}</div>
-          ${posts.map(p=>`<div class="wkpost${PUB(p)?' done':''}${p.fase==='Ingepland'&&d<today?' missed':''}" data-open="${p.id}" style="--kan:${kanaalKleur(p.kanaal)}" title="${esc(p.titel)} · ${esc(p.kanaal)} · ${p.fase}">${p.tijd?p.tijd.slice(0,5)+' ':''}${esc(p.titel)}</div>`).join('')}
+          ${tijdlijn.map(x=>x.html).join('')}
           ${WEEKRITME[dow]?`<div class="dk-ritme">${esc(WEEKRITME[dow])}</div>`:''}
           ${taken.map(taakRij).join('')}
         </div>`;
@@ -1798,6 +1883,7 @@ function renderWeek(){
     </div>
   </div>
   <div class="inzgrid">
+    ${dagstartHtml(dagen)}
     ${weekOffset===0 ? `<div class="inzbox"><h4>☀️ Vandaag — dit staat er voor je klaar</h4>
       ${auto.map(i=>`<div class="planrow${i.rood?' gemist':''}${i.done?' taakklaar':''}" ${i.open?`data-open="${i.open}"`:''} ${i.goto?`data-goto="${i.goto}"`:''} style="cursor:pointer"><span>${i.ico}</span><span class="pt">${i.txt}</span></div>`).join('')}
       ${(T||[]).filter(t=>t.datum===today).map(taakRij).join('')}
@@ -1836,6 +1922,31 @@ function renderWeek(){
     const t = state.taken.find(x=>x.id===b.dataset.tgeb);
     const i = GEBIEDEN.findIndex(g=>g.k===gebied(t.gebied).k);
     updTaak(t.id, { gebied: GEBIEDEN[(i+1)%GEBIEDEN.length].k });
+  });
+  // Dagstart-blok
+  const dsSel = el.querySelector('#ds_datum');
+  if (dsSel) dsSel.onchange = ()=>{ dsDatum = dsSel.value; };
+  el.querySelectorAll('[data-dsgeb]').forEach(b=>b.onclick=()=>{
+    dsGebied = b.dataset.dsgeb;
+    el.querySelectorAll('[data-dsgeb]').forEach(x=>x.classList.toggle('on', x===b));
+  });
+  const dsDuur = ()=> Number(el.querySelector('#ds_duur')?.value)||30;
+  const dsZet = el.querySelector('#ds_zet');
+  if (dsZet) dsZet.onclick = ()=> addTaken(el.querySelector('#ds_taken').value.split('\n'), dsDatum, dsGebied, dsDuur());
+  el.querySelectorAll('[data-dsadv]').forEach(b=>b.onclick=()=>{
+    const adv = state.besluiten.find(x=>String(x.id)===b.dataset.dsadv);
+    if (adv) addTaken([adviesAlsTaak(adv)], dsDatum, 'ads', 15);
+  });
+  const dsAlle = el.querySelector('#ds_alleadv');
+  if (dsAlle) dsAlle.onclick = ()=> addTaken(metaTeBespreken().map(adviesAlsTaak), dsDatum, 'ads', 15);
+  // Klik op een vaste afspraak in de agenda
+  el.querySelectorAll('[data-afspraak]').forEach(a=>a.onclick=(e)=>{
+    e.stopPropagation();
+    if (a.dataset.afspraak==='weekendcheck') { view='prestatie'; localStorage.setItem('mkt_view',view); render(); return; }
+    dsDatum = a.dataset.dag; render();
+    const box = document.getElementById('ds_box');
+    box.scrollIntoView({ behavior:'smooth', block:'center' });
+    document.getElementById('ds_taken').focus({ preventScroll:true });
   });
   el.querySelectorAll('[data-tduur]').forEach(b=>b.onclick=(e)=>{
     e.stopPropagation();
