@@ -651,6 +651,8 @@ function postToRow(p){
 }
 
 // ─── LOAD / SAVE ────────────────────────────────────────────────
+const STARTDATUM = '2026-10-19';
+const nieuweStart = p => p.datum ? p.datum >= STARTDATUM : (p.createdAt||'').slice(0,10) >= STARTDATUM;
 async function loadFromDB(){
   let attempts = 0, pR, kR;
   while (attempts < 3) {
@@ -659,7 +661,10 @@ async function loadFromDB(){
     attempts++; await new Promise(r=>setTimeout(r,800));
   }
   if (pR.error || kR.error) { toast('Fout bij laden — herlaad de pagina'); console.error(pR.error,kR.error); return; }
-  state.posts   = (pR.data||[]).map(rowToPost);
+  // Schone lei (besluit Bryan, 19 okt 2026): alles van vóór de startdatum blijft in de database,
+  // maar verdwijnt uit het hele bord (ook Prestatie). Posts met een datum vanaf de start blijven
+  // zichtbaar; posts zonder datum (ideeën/scripts) alleen als ze vanaf de start zijn aangemaakt.
+  state.posts   = (pR.data||[]).map(rowToPost).filter(nieuweStart);
   state.kanalen = (kR.data||[]);
   // Bord-data (zelfde Supabase): vacatures + kandidaten voor de keten-inzichten
   const [vR,cR] = await Promise.all([
@@ -678,7 +683,7 @@ async function loadFromDB(){
   state.besluiten = bR.error ? [] : (bR.data||[]);
   // Taken voor de weekplanner (tabel kan nog ontbreken → null = setup-kaart tonen)
   const tR = await sb.from('mkt_taken').select('*').order('datum').order('created_at');
-  state.taken = tR.error ? null : (tR.data||[]);
+  state.taken = tR.error ? null : (tR.data||[]).filter(t=>t.datum>=STARTDATUM);
   // Taakgebied/duur bestaan pas na migratie-taakgebieden.sql (lege tabel: aannemen dat het er is; addTaak vangt het op)
   if (state.taken?.length) state.takenV2 = 'gebied' in state.taken[0];
 }
