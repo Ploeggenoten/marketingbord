@@ -1653,8 +1653,14 @@ function autoTakenVandaag(){
   items.push({ ico: gepost?'✅':'✍️', txt:`Post van vandaag — <b>${esc(themaVandaag())}</b>`, done:gepost, goto:'creatie' });
   const rt = WEEKRITME[new Date().getDay()];
   if (rt) items.push({ ico:'📌', txt:rt, goto: rt.includes('Waakhond')||rt.includes('Resultaten')||rt.includes('rapport') ? 'prestatie' : 'creatie' });
-  state.posts.filter(p=>p.fase==='Ingepland' && p.datum && p.datum<today).forEach(p=>
+  // Over datum: alleen posts van déze week als losse rode regel. Oudere (nooit afgeronde)
+  // posts blijven in de database maar komen samen op één rustige regel (besluit Bryan, 19 okt 2026).
+  const weekStart = weekDagen(0)[0];
+  const overDatum = state.posts.filter(p=>p.fase==='Ingepland' && p.datum && p.datum<today);
+  overDatum.filter(p=>p.datum>=weekStart).forEach(p=>
     items.push({ ico:'⏰', txt:`Over datum: <b>${esc(p.titel)}</b> — publiceren of verzetten`, open:p.id, rood:true }));
+  const oud = overDatum.filter(p=>p.datum<weekStart).length;
+  if (oud) items.push({ ico:'🗄', txt:`<span style="color:var(--muted)">${oud} oude post${oud>1?'s':''} van vóór deze week nooit afgerond — opruimen kan in Planning</span>`, goto:'planning' });
   state.posts.filter(p=>(p.publiceerLog||'').startsWith('⚠')).forEach(p=>
     items.push({ ico:'🚀', txt:`Automatisch publiceren mislukt: <b>${esc(p.titel)}</b>`, open:p.id, rood:true }));
   const wh = adWaakhond().filter(a=>a.sev==='rood').length;
