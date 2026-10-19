@@ -75,6 +75,32 @@ nav.fases{background:#20301a;border-bottom:1px solid #33421f;padding:0 18px;disp
 .balansrij .bbar div.af{opacity:1}
 .balansrij .buren{text-align:right;color:var(--muted);font-variant-numeric:tabular-nums}
 @media (max-width:560px){ .balansrij{grid-template-columns:110px 1fr 70px} }
+/* Contentplanning: twee banen per week */
+.pweek{margin-bottom:12px}
+.pgrid{display:grid;grid-template-columns:170px repeat(7,minmax(0,1fr))}
+.pdow{padding:7px 9px;font-size:11.5px;color:var(--muted);border-bottom:1px solid var(--line)}
+.pdow b{font-family:var(--disp);font-weight:400;font-size:14px;letter-spacing:.05em;text-transform:uppercase;color:var(--txt);margin-right:3px}
+.pdow.today{background:#e9f3ec}
+.pbaan-kop{padding:10px 12px;border-bottom:1px solid #e6e9db;border-left:4px solid var(--pc);display:flex;flex-direction:column;gap:3px;font-size:12.5px;background:#fbfcf8}
+.pbaan-kop span{font-size:11px;color:var(--muted)}
+.pcel{min-height:92px;border-bottom:1px solid #e6e9db;border-left:1px solid #e6e9db;padding:6px;display:flex;flex-direction:column;gap:5px;cursor:pointer;min-width:0}
+.pcel:hover{background:#f6f8ef}
+.pcel.today{background:#e9f3ec}
+.pcel.past{background:#f7f8f2}
+.pleeg{margin:auto;color:#c3cbab;font-size:18px;font-weight:300}
+.pcel:hover .pleeg{color:#6b7d43}
+.ppost{font-size:11.5px;line-height:1.35;background:#fff;border:1px solid var(--line);border-left:4px solid var(--pc);border-radius:7px;padding:5px 7px;overflow:hidden;overflow-wrap:anywhere}
+.ppost b{font-weight:800}
+.ppost.done{opacity:.6}.ppost.missed{outline:2px solid var(--red)}
+.pkan{display:flex;gap:3px;margin-top:4px}
+.pkan i{font-style:normal;font-size:9.5px;font-weight:800;border-radius:4px;padding:0 4px;background:#eef0e6;color:#b2b8a2}
+.pkan i.aan{background:var(--pc);color:#fff}
+.pkan i.pub{background:#2f8f5b;color:#fff}
+@media (max-width:760px){
+  .pgrid{grid-template-columns:repeat(7,minmax(140px,1fr));overflow-x:auto}
+  .pgrid .pdow:first-child{display:none}
+  .pbaan-kop{grid-column:1/-1;border-left-width:4px}
+}
 /* Vaste afspraken + dagstart */
 .wkafspraak{font-size:11px;font-weight:600;color:#3f4a2a;background:#eef1e6;border:1px dashed #b9c49a;border-radius:6px;padding:3px 7px;line-height:1.35;cursor:pointer}
 .wkafspraak.ds{background:#fff6dc;border-color:#e2c46d;color:#6b5210}
@@ -549,6 +575,23 @@ function todayISO(){ const d=new Date(); return d.toISOString().slice(0,10); }
 function fmtD(iso){ if(!iso) return ''; const [y,m,d]=iso.split('-'); return `${d}-${m}-${y.slice(2)}`; }
 function esc(s){ return String(s??'').replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
 function kanaalKleur(naam){ const k = state.kanalen.find(x=>x.naam===naam); return k ? k.kleur : '#9aa3b2'; }
+// Twee platformen (Bryan, 19 okt 2026): Instagram-content gaat óók op Facebook en TikTok; LinkedIn is anders.
+const PLATFORMS = [
+  { k:'social',   n:'Instagram · Facebook · TikTok', ico:'📸', kanalen:['Instagram','Facebook','TikTok'], c:'#c13584' },
+  { k:'linkedin', n:'LinkedIn',                      ico:'💼', kanalen:['LinkedIn'],                       c:'#0a66c2' },
+];
+const platformVan = kan => PLATFORMS.find(p=>p.kanalen.includes(kan));
+const KAN_AFK = { Instagram:'IG', Facebook:'FB', TikTok:'TT', LinkedIn:'in' };
+const KAN_SUFFIX = { Instagram:'ig', Facebook:'fb', TikTok:'tt' };
+// Eén stuk content op meerdere kanalen = posts met id <basis>-ig/-fb/-tt. Oudere losse posts
+// (per kanaal apart ingevoerd) groeperen we op titel + datum + tijd.
+const groepKey = p => /-(ig|fb|tt)$/.test(p.id) ? p.id.replace(/-(ig|fb|tt)$/,'') : `${p.titel}|${p.datum||''}|${p.tijd||''}`;
+function groepeer(posts){
+  const m = new Map();
+  posts.forEach(p=>{ const k = groepKey(p); if (!m.has(k)) m.set(k, []); m.get(k).push(p); });
+  return [...m.values()];
+}
+let planWeek = 0;
 function toast(msg){ const t=document.getElementById('toast'); t.textContent=msg; t.classList.add('show'); clearTimeout(t._h); t._h=setTimeout(()=>t.classList.remove('show'),2600); }
 
 // ─── DATA MAPPING ───────────────────────────────────────────────
@@ -605,10 +648,21 @@ async function loadFromDB(){
   // Taakgebied/duur bestaan pas na migratie-taakgebieden.sql (lege tabel: aannemen dat het er is; addTaak vangt het op)
   if (state.taken?.length) state.takenV2 = 'gebied' in state.taken[0];
 }
-async function upsertPost(p){
+async function upsertPost(p, metGekoppeld=true){
   const row = { ...postToRow(p), updated_by: currentUser?.id, updated_at: new Date().toISOString() };
   const { error } = await sb.from('mkt_posts').upsert(row);
   if (error) { console.error('upsertPost', error); toast('Opslaan mislukt'); }
+  // Gekoppelde posts (IG/FB/TikTok, id <basis>-ig/-fb/-tt) blijven gelijk: inhoud, fase, datum en tijd
+  // gaan mee; kanaal, resultaten, link en publiceer-log blijven per kanaal.
+  if (metGekoppeld && /-(ig|fb|tt)$/.test(p.id)) {
+    const fbig = k => ['Facebook','Instagram'].includes(k);
+    for (const sib of state.posts.filter(x=>x.id!==p.id && groepKey(x)===groepKey(p))) {
+      Object.assign(sib, { titel:p.titel, format:p.format, doel:p.doel, fase: (PUB(p) || PUB(sib)) ? sib.fase : p.fase, // publiceren blijft per kanaal
+        campagne:p.campagne, vacature:p.vacature, utm:p.utm, hook:p.hook, script:p.script, datum:p.datum, tijd:p.tijd,
+        mediaUrl:p.mediaUrl, autoPublish: fbig(p.kanaal) ? (p.autoPublish && fbig(sib.kanaal)) : sib.autoPublish });
+      await upsertPost(sib, false);
+    }
+  }
 }
 async function deletePostDB(id){ await sb.from('mkt_posts').delete().eq('id', id); }
 
@@ -1418,32 +1472,37 @@ async function composerSave(inplannen){
   const tekst = document.getElementById('c_tekst').value.trim();
   const kanaal = _comp.kanaal;
   if (!tekst && !_comp.media) { toast('Schrijf eerst een caption of upload media'); return; }
-  if (!kanaal) { toast('Kies een kanaal (klik op een van de rondjes)'); return; }
+  if (!kanaal) { toast('Kies een platform (klik op een van de knoppen)'); return; }
+  const kanalen = kanaal==='social' ? PLATFORMS[0].kanalen : [kanaal];
   let datum = document.getElementById('c_datum').value;
   let tijd = document.getElementById('c_tijd').value;
-  let fase = 'Idee', autoPub = false;
+  let fase = 'Idee';
   if (inplannen) {
     if (!datum) datum = todayISO();
     if (!tijd) { const d = new Date(Date.now()+3600e3); tijd = String(d.getHours()).padStart(2,'0')+':00'; }
     fase = 'Ingepland';
-    autoPub = ['Facebook','Instagram'].includes(kanaal);
-    if (kanaal==='Instagram' && !_comp.media) { toast('Instagram vereist een foto of video'); return; }
+    if (kanalen.some(k=>['Instagram','TikTok'].includes(k)) && !_comp.media) { toast('Instagram en TikTok vereisen een foto of video'); return; }
   }
   const titel = tekst ? (tekst.split('\n')[0].split(/\s+/).slice(0,7).join(' ').slice(0,60)) : ('Post ' + fmtD(datum||todayISO()));
-  const p = { id:'m'+Date.now()+Math.random().toString(36).slice(2,6),
-    titel, kanaal, format: _comp.media ? (/\.(mp4|mov|m4v|webm)/i.test(_comp.media)?'Reel / video':'Foto + tekst') : 'Tekstpost',
+  const basisId = 'm'+Date.now()+Math.random().toString(36).slice(2,6);
+  const nieuw = kanalen.map(kan => ({ id: kanalen.length>1 ? `${basisId}-${KAN_SUFFIX[kan]}` : basisId,
+    titel, kanaal:kan, format: _comp.media ? (/\.(mp4|mov|m4v|webm)/i.test(_comp.media)?'Reel / video':'Foto + tekst') : 'Tekstpost',
     doel:'Kandidaten werven', fase, campagne:'', vacature:_comp.vacature, utm:'', hook:tekst.split('\n')[0].slice(0,120), script:tekst,
-    datum: inplannen?datum:'', tijd: inplannen?tijd:'', link:'', mediaUrl:_comp.media, autoPublish:autoPub, publiceerLog:'',
-    resultaat:{}, learnings:'', notities:[], createdAt:new Date().toISOString(), _updatedAt:new Date().toISOString() };
-  state.posts.push(p);
-  _comp = { ..._comp, media:'', vacature:'', tekst:'' };
+    datum: inplannen?datum:'', tijd: inplannen?tijd:'', link:'', mediaUrl:_comp.media,
+    autoPublish: inplannen && ['Facebook','Instagram'].includes(kan), publiceerLog:'',
+    resultaat:{}, learnings:'', notities:[], createdAt:new Date().toISOString(), _updatedAt:new Date().toISOString() }));
+  state.posts.push(...nieuw);
+  _comp = { ..._comp, media:'', vacature:'', tekst:'', datum:'' };
   render();
-  await upsertPost(p);
-  toast(inplannen ? (autoPub ? `🚀 Ingepland — gaat ${fmtD(datum)} om ${tijd} automatisch live op ${kanaal}` : `📅 Ingepland voor ${fmtD(datum)} — ${kanaal} posten doe je zelf (auto kan alleen FB/IG)`) : '💾 Bewaard als idee');
+  for (const p of nieuw) await upsertPost(p);
+  const auto = nieuw.filter(p=>p.autoPublish).map(p=>p.kanaal), zelf = nieuw.filter(p=>!p.autoPublish).map(p=>p.kanaal);
+  toast(inplannen
+    ? `🚀 Ingepland voor ${fmtD(datum)} ${tijd}${auto.length?` — automatisch live op ${auto.join(' + ')}`:''}${zelf.length?`${auto.length?';':' —'} ${zelf.join(' + ')} post je zelf`:''}`
+    : '💾 Bewaard als idee');
 }
 function composerVul(item){
   _comp.vacature = item.vacature || '';
-  if (item.kanaal) _comp.kanaal = item.kanaal;
+  if (item.kanaal) _comp.kanaal = platformVan(item.kanaal)?.k==='social' ? 'social' : item.kanaal;
   const t = document.getElementById('c_tekst');
   t.value = item.hook + '\n\n';
   t.focus();
@@ -1455,12 +1514,18 @@ function composerVul(item){
 function renderCreatie(){
   const el = document.getElementById('creatie');
   const P = filtered();
-  const ideeen = P.filter(p=>p.fase==='Idee').sort((a,b)=>(b._updatedAt||b.createdAt||'').localeCompare(a._updatedAt||a.createdAt||''));
-  const scripts = P.filter(p=>p.fase==='Script klaar').sort((a,b)=>(b._updatedAt||b.createdAt||'').localeCompare(a._updatedAt||a.createdAt||''));
+  const ideeen = groepeer(P.filter(p=>p.fase==='Idee')).map(g=>g[0]).sort((a,b)=>(b._updatedAt||b.createdAt||'').localeCompare(a._updatedAt||a.createdAt||''));
+  const scripts = groepeer(P.filter(p=>p.fase==='Script klaar')).map(g=>g[0]).sort((a,b)=>(b._updatedAt||b.createdAt||'').localeCompare(a._updatedAt||a.createdAt||''));
   const rw = runway();
   if (!_comp.insp.length) rolInspiratie();
   if (!_afk.length) rolAfkijk();
-  const kchips = state.kanalen.map(k=>`<span class="kchip${_comp.kanaal===k.naam?' on':''}" data-kc="${esc(k.naam)}" style="--kc:${k.kleur}"><span class="kdot" style="background:${_comp.kanaal===k.naam?'#fff':k.kleur}"></span>${esc(k.naam)}</span>`).join('');
+  // Kies een platform: IG·FB·TikTok in één keer, of LinkedIn (+ eventuele andere kanalen die in geen platform zitten)
+  const keuzes = [
+    { v:'social', n:'📸 Instagram + Facebook + TikTok', c:PLATFORMS[0].c },
+    { v:'LinkedIn', n:'💼 LinkedIn', c:kanaalKleur('LinkedIn') },
+    ...state.kanalen.filter(k=>!platformVan(k.naam)).map(k=>({ v:k.naam, n:k.naam, c:k.kleur })),
+  ];
+  const kchips = keuzes.map(k=>`<span class="kchip${_comp.kanaal===k.v?' on':''}" data-kc="${esc(k.v)}" style="--kc:${k.c}">${esc(k.n)}</span>`).join('');
   const st = postStreak();
   el.innerHTML = `
   ${dagstartHtml()}
@@ -1480,7 +1545,7 @@ function renderCreatie(){
       <span class="medianame" id="c_medianame">${_comp.media?'✓ media toegevoegd':''}</span>
       <input type="file" id="c_media" accept="image/*,video/mp4,video/quicktime" style="display:none">
       <span style="flex:1"></span>
-      <input type="date" id="c_datum" value="${todayISO()}"> <input type="time" id="c_tijd">
+      <input type="date" id="c_datum" value="${_comp.datum||todayISO()}"> <input type="time" id="c_tijd">
     </div>
     <div class="studiorow">
       <button class="bigbtn" id="c_plan">🚀 Inplannen & automatisch posten</button>
@@ -1557,7 +1622,7 @@ function renderCreatie(){
   el.querySelector('#c_plan').onclick = () => composerSave(true);
   el.querySelector('#c_concept').onclick = () => composerSave(false);
   el.querySelector('#c_meer').onclick = () => {
-    openEdit(null, { vacature:_comp.vacature, kanaal:_comp.kanaal });
+    openEdit(null, { vacature:_comp.vacature, kanaal:_comp.kanaal==='social' ? 'Instagram' : _comp.kanaal });
     document.getElementById('f_script').value = document.getElementById('c_tekst')?.value || '';
     if (_comp.media) { _mediaUrl = _comp.media; const mo=document.getElementById('f_mediaout'); mo.innerHTML=`📎 <a href="${esc(_comp.media)}" target="_blank">media bekijken</a>`; mo.style.display='block'; }
     updateChecklist();
@@ -1587,15 +1652,6 @@ function renderPlanning(){
   const gepland = P.filter(p=>p.fase==='Ingepland').sort((a,b)=>(a.datum||'9999').localeCompare(b.datum||'9999'));
   const gemist = gepland.filter(p=>p.datum && p.datum<today);
   const recent = P.filter(p=>PUB(p)).sort((a,b)=>(b.datum||'').localeCompare(a.datum||'')).slice(0,8);
-  // komende 7 dagen strip
-  let wk='';
-  for (let i=0;i<7;i++){
-    const d=new Date(); d.setDate(d.getDate()+i);
-    const iso=d.toISOString().slice(0,10);
-    const dag=['zo','ma','di','wo','do','vr','za'][d.getDay()];
-    const its=P.filter(p=>p.datum===iso && (p.fase==='Ingepland'||PUB(p)));
-    wk+=`<div class="wcell${i===0?' today':''}"><div class="n">${its.length||'·'}</div><div class="l">${dag} ${fmtD(iso).slice(0,5)}</div>${its.slice(0,3).map(p=>`<div class="t"><span class="kdot" style="background:${kanaalKleur(p.kanaal)}"></span> ${esc(p.titel.slice(0,22))}</div>`).join('')}</div>`;
-  }
   // Cadans-doelen per kanaal (week = ma t/m zo)
   const nu = new Date(); const ws = new Date(nu); ws.setDate(nu.getDate()-((nu.getDay()+6)%7));
   const wsIso = ws.toISOString().slice(0,10);
@@ -1606,9 +1662,43 @@ function renderPlanning(){
     return `<div style="margin-bottom:8px"><div style="display:flex;justify-content:space-between;font-size:12.5px;font-weight:600"><span><span class="kdot" style="background:${k.kleur}"></span> ${esc(k.naam)}</span><span>${n}/${k.doel_pw}${n>=k.doel_pw?' ✓':''}</span></div>
       <div style="height:7px;border-radius:4px;background:#e2e6d6;overflow:hidden;margin-top:3px"><i style="display:block;height:100%;width:${pct}%;background:${n>=k.doel_pw?'#2f8f5b':'#6fa03c'}"></i></div></div>`;
   }).join('') : `<div class="toel" style="margin:0">Stel per kanaal een doel in (posts per week) via ⚙ Kanalen — dan zie je hier je voortgang.</div>`;
+  // ── Twee banen per week: IG·FB·TikTok en LinkedIn ──
+  const pdagen = weekDagen(planWeek);
+  const p0 = new Date(pdagen[0]+'T12:00:00'), p6 = new Date(pdagen[6]+'T12:00:00');
+  const banen = PLATFORMS.map(pl=>{
+    const weekPosts = P.filter(p=>pdagen.includes(p.datum) && pl.kanalen.includes(p.kanaal) && (p.fase==='Ingepland'||PUB(p)));
+    const n = groepeer(weekPosts).length;
+    return `<div class="pbaan-kop" style="--pc:${pl.c}"><b>${pl.ico} ${esc(pl.n)}</b><span>${n} post${n===1?'':'s'} deze week</span></div>` +
+      pdagen.map(d=>{
+        const groepen = groepeer(weekPosts.filter(p=>p.datum===d)).sort((a,b)=>(a[0].tijd||'').localeCompare(b[0].tijd||''));
+        return `<div class="pcel${d===today?' today':''}${d<today?' past':''}" data-pnew="${pl.k}|${d}" title="Klik om hier een post in te plannen">
+          ${groepen.map(g=>{
+            const p = g[0];
+            const done = g.every(PUB), missed = g.some(x=>x.fase==='Ingepland' && d<today);
+            return `<div class="ppost${done?' done':''}${missed?' missed':''}" data-open="${p.id}" style="--pc:${pl.c}" title="${esc(p.titel)} · ${g.map(x=>x.kanaal+': '+x.fase).join(' · ')}">
+              ${p.tijd?`<b>${p.tijd.slice(0,5)}</b> `:''}${esc(p.titel)}
+              ${pl.kanalen.length>1?`<span class="pkan">${pl.kanalen.map(k=>{ const x=g.find(y=>y.kanaal===k); return `<i class="${x?(PUB(x)?'pub':'aan'):'uit'}" title="${k}: ${x?x.fase:'niet ingepland'}">${KAN_AFK[k]}</i>`; }).join('')}</span>`:''}
+            </div>`;
+          }).join('') || '<span class="pleeg">＋</span>'}
+        </div>`;
+      }).join('');
+  }).join('');
   el.innerHTML = `
-  <div class="inzgrid" style="grid-template-columns:2fr 1fr">
-    <div class="inzbox"><h4>Komende 7 dagen</h4><div class="wgrid">${wk}</div></div>
+  <div class="calbox pweek">
+    <div class="calhead">
+      <h3>📅 Week ${isoWeek(p0)} · ${p0.getDate()}${p0.getMonth()!==p6.getMonth()?' '+p0.toLocaleDateString('nl-NL',{month:'short'}):''} – ${p6.toLocaleDateString('nl-NL',{day:'numeric',month:'long'})}</h3>
+      <button class="calnav" id="pw_prev">‹</button>
+      <button class="calnav" id="pw_nu">Vandaag</button>
+      <button class="calnav" id="pw_next">›</button>
+      <span style="font-size:11.5px;color:var(--muted)">Klik op een leeg vak om daar een post in te plannen</span>
+    </div>
+    <div class="pgrid">
+      <div class="pdow"></div>
+      ${pdagen.map(d=>{ const dt=new Date(d+'T12:00:00'); return `<div class="pdow${d===today?' today':''}"><b>${DAGNAMEN[dt.getDay()]}</b> ${dt.getDate()} ${dt.toLocaleDateString('nl-NL',{month:'short'})}</div>`; }).join('')}
+      ${banen}
+    </div>
+  </div>
+  <div class="inzgrid">
     <div class="inzbox"><h4>🎯 Cadans deze week</h4>${cadansHtml}</div>
   </div>
   <div class="calbox">
@@ -1632,9 +1722,22 @@ function renderPlanning(){
   </div>`;
   renderCal();
   el.querySelectorAll('[data-open]').forEach(r=>r.onclick = e => {
+    e.stopPropagation();
     if (e.target.dataset.q) { const [id,fase]=e.target.dataset.q.split('|'); quickFase(id,fase); return; }
     openEdit(r.dataset.open);
   });
+  // Leeg vak in een baan → naar Nieuwe post met platform en datum al ingevuld
+  el.querySelectorAll('[data-pnew]').forEach(c=>c.onclick = () => {
+    const [pl, d] = c.dataset.pnew.split('|');
+    _comp.kanaal = pl==='social' ? 'social' : 'LinkedIn';
+    _comp.datum = d;
+    view = 'creatie'; localStorage.setItem('mkt_view', view); render();
+    document.getElementById('c_tekst')?.focus();
+    toast(`Nieuwe post voor ${pl==='social'?'Instagram + Facebook + TikTok':'LinkedIn'} op ${fmtD(d)}`);
+  });
+  el.querySelector('#pw_prev').onclick = () => { planWeek--; render(); };
+  el.querySelector('#pw_next').onclick = () => { planWeek++; render(); };
+  el.querySelector('#pw_nu').onclick = () => { planWeek = 0; render(); };
   el.querySelector('#calprev').onclick = () => { const [y,m]=calMaand.split('-').map(Number); const d=new Date(y,m-2,1); calMaand=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`; renderCal(); };
   el.querySelector('#calnext').onclick = () => { const [y,m]=calMaand.split('-').map(Number); const d=new Date(y,m,1); calMaand=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`; renderCal(); };
   el.querySelector('#calvandaag').onclick = () => { calMaand = todayISO().slice(0,7); renderCal(); };
@@ -1960,8 +2063,8 @@ function render(){
     document.getElementById(v).style.display = view===v ? 'flex' : 'none';
   });
   document.querySelectorAll('.navtab').forEach(t=>t.classList.toggle('on', t.dataset.view===view));
-  const nCre = state.posts.filter(p=>p.fase==='Idee'||p.fase==='Script klaar').length;
-  const nPlan = state.posts.filter(p=>p.fase==='Ingepland').length;
+  const nCre = groepeer(state.posts.filter(p=>p.fase==='Idee'||p.fase==='Script klaar')).length;
+  const nPlan = groepeer(state.posts.filter(p=>p.fase==='Ingepland')).length;
   document.getElementById('nb_cre').textContent = nCre||'';
   document.getElementById('nb_plan').textContent = nPlan||'';
   const nWeek = (state.taken||[]).filter(t=>!t.klaar && t.datum<=todayISO()).length;
