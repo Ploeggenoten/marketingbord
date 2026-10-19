@@ -358,9 +358,9 @@ nav.fases{position:sticky;top:0;z-index:4}
 </header>
 <nav class="fases">
   <button class="navtab" data-view="week">📋 Mijn week <span class="nbadge" id="nb_week"></span></button>
+  <button class="navtab" data-view="planning">🗓 Contentplanning <span class="nbadge" id="nb_plan"></span></button>
   <button class="navtab" data-view="prestatie">📊 Prestatie</button>
   <button class="navtab" data-view="creatie">✍️ Content Creatie <span class="nbadge" id="nb_cre"></span></button>
-  <button class="navtab" data-view="planning">🗓 Planning <span class="nbadge" id="nb_plan"></span></button>
 </nav>
 <div class="viewwrap" id="week"></div>
 <div class="viewwrap" id="prestatie"></div>
@@ -1674,7 +1674,7 @@ function autoTakenVandaag(){
   overDatum.filter(p=>p.datum>=weekStart).forEach(p=>
     items.push({ ico:'⏰', txt:`Over datum: <b>${esc(p.titel)}</b> — publiceren of verzetten`, open:p.id, rood:true }));
   const oud = overDatum.filter(p=>p.datum<weekStart).length;
-  if (oud) items.push({ ico:'🗄', txt:`<span style="color:var(--muted)">${oud} oude post${oud>1?'s':''} van vóór deze week nooit afgerond — opruimen kan in Planning</span>`, goto:'planning' });
+  if (oud) items.push({ ico:'🗄', txt:`<span style="color:var(--muted)">${oud} oude post${oud>1?'s':''} van vóór deze week nooit afgerond — opruimen kan in Contentplanning</span>`, goto:'planning' });
   state.posts.filter(p=>(p.publiceerLog||'').startsWith('⚠')).forEach(p=>
     items.push({ ico:'🚀', txt:`Automatisch publiceren mislukt: <b>${esc(p.titel)}</b>`, open:p.id, rood:true }));
   const wh = adWaakhond().filter(a=>a.sev==='rood').length;
