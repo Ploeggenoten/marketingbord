@@ -167,6 +167,7 @@ nav.fases{background:#20301a;border-bottom:1px solid #33421f;padding:0 18px;disp
 .wk-urentxt{font-size:10.5px;font-weight:600;color:var(--muted);margin-top:-2px}
 .wk-urentxt.vol{color:var(--red)}
 .wkpost{font-size:11px;font-weight:600;color:#fff;background:var(--kan,#9aa3b2);border-radius:6px;padding:3px 7px;line-height:1.35;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
+.wkpost .wkkan{font-size:9.5px;font-weight:800;opacity:.75;margin-left:3px}
 .wkpost.done{opacity:.65}.wkpost.missed{outline:2px solid var(--red)}
 .wkcell .taakrow{flex-wrap:wrap;row-gap:3px;align-items:flex-start;background:#fff;border-radius:6px;padding:3px 4px 3px 6px}
 .wkcell .taakrow input[type=checkbox]{margin:1px 0 0}
@@ -626,6 +627,14 @@ function groepeer(posts){
   posts.forEach(p=>{ const k = groepKey(p); if (!m.has(k)) m.set(k, []); m.get(k).push(p); });
   return [...m.values()];
 }
+// Weergave van een groep (IG·FB·TikTok = één item): kleur van het platform + kanaallabels
+function groepWeergave(g){
+  const p = g[0], pl = platformVan(p.kanaal);
+  const social = pl && pl.kanalen.length>1;
+  return { p, kleur: pl ? pl.c : kanaalKleur(p.kanaal), tekst: pl ? pl.tc : '#fff',
+    kanalen: g.map(x=>x.kanaal), label: social ? g.map(x=>KAN_AFK[x.kanaal]||x.kanaal).join('·') : '',
+    done: g.every(PUB), ingepland: g.some(x=>x.fase==='Ingepland'), auto: g.some(x=>x.autoPublish) };
+}
 let planWeek = 0;
 function toast(msg){ const t=document.getElementById('toast'); t.textContent=msg; t.classList.add('show'); clearTimeout(t._h); t._h=setTimeout(()=>t.classList.remove('show'),2600); }
 
@@ -697,7 +706,7 @@ async function upsertPost(p, metGekoppeld=true){
   if (metGekoppeld && /-(ig|fb|tt)$/.test(p.id)) {
     const fbig = k => ['Facebook','Instagram'].includes(k);
     for (const sib of state.posts.filter(x=>x.id!==p.id && groepKey(x)===groepKey(p))) {
-      Object.assign(sib, { titel:p.titel, format:p.format, doel:p.doel, fase: (PUB(p) || PUB(sib)) ? sib.fase : p.fase, // publiceren blijft per kanaal
+      Object.assign(sib, { titel:p.titel, format:p.format, doel:p.doel, fase: (PUB(p) || PUB(sib)) && (p.autoPublish || sib.autoPublish) ? sib.fase : p.fase, // bij automatisch posten blijft live gaan per kanaal; handmatig = samen
         campagne:p.campagne, vacature:p.vacature, utm:p.utm, hook:p.hook, script:p.script, datum:p.datum, tijd:p.tijd,
         mediaUrl:p.mediaUrl, autoPublish: fbig(p.kanaal) ? (p.autoPublish && fbig(sib.kanaal)) : sib.autoPublish });
       await upsertPost(sib, false);
@@ -818,13 +827,13 @@ function renderCal(){
   for (let i=0;i<42;i++){
     const iso = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
     const out = d.getMonth() !== m-1;
-    const items = P.filter(p=>p.datum===iso).sort((a,b)=>(a.tijd||'').localeCompare(b.tijd||''));
+    const items = groepeer(P.filter(p=>p.datum===iso)).sort((a,b)=>(a[0].tijd||'').localeCompare(b[0].tijd||''));
     html += `<div class="calcell${out?' out':''}${iso===today?' today':''}" data-dag="${iso}">
       <div class="dn">${d.getDate()}</div>
-      ${items.map(p=>{
-        const missed = p.fase==='Ingepland' && iso < today;
-        const done = p.fase==='Gepubliceerd'||p.fase==='Learnings';
-        return `<div class="calpost${done?' done':''}${missed?' missed':''}" data-id="${p.id}" title="${esc(p.titel)} · ${esc(p.kanaal)} · ${p.fase}" style="--kan:${kanaalKleur(p.kanaal)}">${p.tijd?p.tijd.slice(0,5)+' ':''}${esc(p.titel)}</div>`;
+      ${items.map(g=>{
+        const w = groepWeergave(g), p = w.p;
+        const missed = w.ingepland && iso < today;
+        return `<div class="calpost${w.done?' done':''}${missed?' missed':''}" data-id="${p.id}" title="${esc(p.titel)} · ${esc(w.kanalen.join(' + '))}" style="--kan:${w.kleur};color:${w.tekst}">${p.tijd?p.tijd.slice(0,5)+' ':''}${esc(p.titel)}${w.label?` · ${w.label}`:''}</div>`;
       }).join('')}
     </div>`;
     d.setDate(d.getDate()+1);
@@ -1669,9 +1678,11 @@ function renderPlanning(){
   const el = document.getElementById('planning');
   const P = filtered();
   const today = todayISO();
-  const gepland = P.filter(p=>p.fase==='Ingepland').sort((a,b)=>(a.datum||'9999').localeCompare(b.datum||'9999'));
+  // IG·FB·TikTok telt als één post (groepen), net als in de banen
+  const gepland = groepeer(P.filter(p=>p.fase==='Ingepland')).map(g=>g[0]).sort((a,b)=>(a.datum||'9999').localeCompare(b.datum||'9999'));
   const gemist = gepland.filter(p=>p.datum && p.datum<today);
-  const recent = P.filter(p=>PUB(p)).sort((a,b)=>(b.datum||'').localeCompare(a.datum||'')).slice(0,8);
+  const recent = groepeer(P.filter(p=>PUB(p))).map(g=>g[0]).sort((a,b)=>(b.datum||'').localeCompare(a.datum||'')).slice(0,8);
+  const kanLabel = p => { const g = P.filter(x=>groepKey(x)===groepKey(p)); const w = groepWeergave(g); return `<span class="kdot" style="background:${w.kleur}"></span>${w.label?`<small style="color:var(--muted)">${w.label}</small>`:''}`; };
   // Cadans-doelen per kanaal (week = ma t/m zo)
   const nu = new Date(); const ws = new Date(nu); ws.setDate(nu.getDate()-((nu.getDay()+6)%7));
   const wsIso = ws.toISOString().slice(0,10);
@@ -1734,10 +1745,10 @@ function renderPlanning(){
   <div class="inzgrid">
     <div class="inzbox"><h4>📅 Agenda — ingepland (${gepland.length})</h4>
       ${gemist.length?`<div class="advies rood"><b>⏰ ${gemist.length} over datum</b>Publiceer alsnog of kies een nieuwe datum.</div>`:''}
-      ${gepland.map(p=>`<div class="planrow${p.datum&&p.datum<today?' gemist':''}" data-open="${p.id}" style="cursor:pointer"><span class="pd">${fmtD(p.datum)||'—'}${p.tijd?' '+p.tijd.slice(0,5):''}</span><span class="kdot" style="background:${kanaalKleur(p.kanaal)}"></span><span class="pt">${p.autoPublish?'🚀 ':''}${esc(p.titel)}</span>${p.autoPublish?'<small style="color:var(--muted)">auto</small>':`<button class="qbtn" data-q="${p.id}|Gepubliceerd">✔</button>`}</div>`).join('') || '<div class="toel" style="margin:0">Niets ingepland — plan vanuit de kalender of Content Creatie.</div>'}
+      ${gepland.map(p=>`<div class="planrow${p.datum&&p.datum<today?' gemist':''}" data-open="${p.id}" style="cursor:pointer"><span class="pd">${fmtD(p.datum)||'—'}${p.tijd?' '+p.tijd.slice(0,5):''}</span>${kanLabel(p)}<span class="pt">${p.autoPublish?'🚀 ':''}${esc(p.titel)}</span>${p.autoPublish?'<small style="color:var(--muted)">auto</small>':`<button class="qbtn" data-q="${p.id}|Gepubliceerd">✔</button>`}</div>`).join('') || '<div class="toel" style="margin:0">Niets ingepland — plan vanuit de kalender of Content Creatie.</div>'}
     </div>
     <div class="inzbox"><h4>✔ Recent gepubliceerd</h4>
-      ${recent.map(p=>`<div class="planrow" data-open="${p.id}" style="cursor:pointer"><span class="pd">${fmtD(p.datum)||'—'}</span><span class="kdot" style="background:${kanaalKleur(p.kanaal)}"></span><span class="pt">${esc(p.titel)}</span>${Number(p.resultaat?.bereik)>0?`<small style="color:var(--muted)">👁 ${fmtN(p.resultaat.bereik)}</small>`:'<small style="color:#a86a1a">📊 resultaten?</small>'}</div>`).join('') || '<div class="toel" style="margin:0">Nog niets gepubliceerd.</div>'}
+      ${recent.map(p=>`<div class="planrow" data-open="${p.id}" style="cursor:pointer"><span class="pd">${fmtD(p.datum)||'—'}</span>${kanLabel(p)}<span class="pt">${esc(p.titel)}</span>${Number(p.resultaat?.bereik)>0?`<small style="color:var(--muted)">👁 ${fmtN(p.resultaat.bereik)}</small>`:'<small style="color:#a86a1a">📊 resultaten?</small>'}</div>`).join('') || '<div class="toel" style="margin:0">Nog niets gepubliceerd.</div>'}
     </div>
   </div>`;
   renderCal();
@@ -1793,7 +1804,7 @@ function autoTakenVandaag(){
   // Over datum: alleen posts van déze week als losse rode regel. Oudere (nooit afgeronde)
   // posts blijven in de database maar komen samen op één rustige regel (besluit Bryan, 19 okt 2026).
   const weekStart = weekDagen(0)[0];
-  const overDatum = state.posts.filter(p=>p.fase==='Ingepland' && p.datum && p.datum<today);
+  const overDatum = groepeer(state.posts.filter(p=>p.fase==='Ingepland' && p.datum && p.datum<today)).map(g=>g[0]);
   overDatum.filter(p=>p.datum>=weekStart).forEach(p=>
     items.push({ ico:'⏰', txt:`Over datum: <b>${esc(p.titel)}</b> — publiceren of verzetten`, open:p.id, rood:true }));
   const oud = overDatum.filter(p=>p.datum<weekStart).length;
@@ -2081,7 +2092,8 @@ function renderWeek(){
           ...ind.blokken.filter(b=>b.soort==='taak').map(b=>({ t:tStr(b.van), html: taakRij(b.t, tStr(b.van)) })),
           ...ind.past.map(t=>({ t:'99', html: taakRij(t, '⚠') })),
           ...afs.map(a=>({ t:a.van, html:`<div class="wkafspraak${a.k==='dagstart'?' ds':''}" data-afspraak="${a.k}" data-dag="${d}" title="${esc(a.txt)}"><b>${a.van}–${a.tot}</b> ${a.ico} ${esc(a.titel)}${a.k==='dagstart'&&d===today&&metaTeBespreken().length?` <span class="wkbadge">${metaTeBespreken().length}</span>`:''}</div>` })),
-          ...posts.map(p=>({ t:p.tijd||'99', html:`<div class="wkpost${PUB(p)?' done':''}${p.fase==='Ingepland'&&d<today?' missed':''}" data-open="${p.id}" style="--kan:${kanaalKleur(p.kanaal)}" title="${esc(p.titel)} · ${esc(p.kanaal)} · ${p.fase}">${p.tijd?p.tijd.slice(0,5)+' ':''}${esc(p.titel)}</div>` })),
+          ...groepeer(posts).map(g=>{ const w = groepWeergave(g), p = w.p;
+            return { t:p.tijd||'99', html:`<div class="wkpost${w.done?' done':''}${w.ingepland&&d<today?' missed':''}" data-open="${p.id}" style="--kan:${w.kleur};color:${w.tekst}" title="${esc(p.titel)} · ${esc(w.kanalen.join(' + '))}">${p.tijd?p.tijd.slice(0,5)+' ':''}${esc(p.titel)}${w.label?` <span class="wkkan">${w.label}</span>`:''}</div>` }; }),
         ].sort((a,b)=>a.t.localeCompare(b.t));
         const vol = Math.min(100, min/(DAG_UREN*60)*100);
         const vrij = VRIJE_DAGEN.includes(dow);
@@ -2331,9 +2343,11 @@ document.getElementById('f_save').onclick = async () => {
 document.getElementById('f_del').onclick = async () => {
   if (!editId) return;
   const p = state.posts.find(x=>x.id===editId);
-  if (!confirm(`"${p?.titel}" definitief verwijderen?`)) return;
-  state.posts = state.posts.filter(x=>x.id!==editId);
-  await deletePostDB(editId);
+  // Gekoppelde IG/FB/TikTok-posts zijn één post → samen verwijderen
+  const ids = /-(ig|fb|tt)$/.test(editId) ? state.posts.filter(x=>groepKey(x)===groepKey(p)).map(x=>x.id) : [editId];
+  if (!confirm(`"${p?.titel}" definitief verwijderen${ids.length>1?' (Instagram, Facebook én TikTok)':''}?`)) return;
+  state.posts = state.posts.filter(x=>!ids.includes(x.id));
+  for (const id of ids) await deletePostDB(id);
   closeEdit(); render(); toast('Verwijderd');
 };
 
