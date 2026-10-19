@@ -1391,12 +1391,6 @@ function postStreak(){
   const wkDagen = new Set([...dagen].filter(x=>x>=ws.toISOString().slice(0,10)));
   return { streak:n, week:wkDagen.size };
 }
-function rolInspiratie(){
-  const dag = new Date().getDay();
-  const vandaag = (THEMA_IDEE[dag]||[]).map(i=>({ soort:'thema', titel:i.t, hook:i.h, kanaal:'' }));
-  const ideeen = [...IDEEENBANK].sort(()=>Math.random()-.5).slice(0,3).map(i=>({ soort:'idee', titel:i.t, hook:i.h, format:i.f, doel:i.d, kanaal:'' }));
-  _comp.insp = [...vandaag, ...ideeen];
-}
 
 // ── Filmdag-werkplaats: scripts per functie voorbereiden voor het filmen ──
 function filmdagen(){
@@ -1519,7 +1513,6 @@ function renderCreatie(){
   const ideeen = groepeer(P.filter(p=>p.fase==='Idee')).map(g=>g[0]).sort((a,b)=>(b._updatedAt||b.createdAt||'').localeCompare(a._updatedAt||a.createdAt||''));
   const scripts = groepeer(P.filter(p=>p.fase==='Script klaar')).map(g=>g[0]).sort((a,b)=>(b._updatedAt||b.createdAt||'').localeCompare(a._updatedAt||a.createdAt||''));
   const rw = runway();
-  if (!_comp.insp.length) rolInspiratie();
   if (!_afk.length) rolAfkijk();
   // Kies een platform: IG·FB·TikTok in één keer, of LinkedIn (+ eventuele andere kanalen die in geen platform zitten)
   const keuzes = [
@@ -1556,15 +1549,6 @@ function renderCreatie(){
       <button class="qbtn" id="c_video">🎬 videoscript</button>
     </div>
   </div>
-  <div class="inzbox"><h4 style="display:flex;justify-content:space-between;align-items:center">💡 Inspiratie — klik "gebruik" en hij staat in je post <button class="qbtn" id="insp_rol">↻ andere</button></h4>
-    <div class="inspstrip">${_comp.insp.map((i,ix)=>`
-      <div class="inspkaart${i.soort==='thema'?' gat':''}">
-        <div class="it2">${i.soort==='thema'?'📅 past bij vandaag · ':''}${esc(i.titel)}</div>
-        <div class="ih2">${esc(i.hook)}</div>
-        <button class="gebruik" data-insp="${ix}">→ gebruik</button>
-      </div>`).join('')}
-    </div>
-  </div>
   <div class="inzbox"><h4 style="display:flex;justify-content:space-between;align-items:center">🔥 Afkijken — dit gaat nu viraal bij andere bedrijven <button class="qbtn" id="afk_rol">↻ andere</button></h4>
     <div class="toel" style="margin:0 0 10px">De formule achter bijna elke bedrijfsviral: <b>trend van de week × echte collega's × zelfspot</b>. Gewoon op je telefoon gefilmd is juist goed.</div>
     <div class="inspstrip">${_afk.map((a,ix)=>`
@@ -1599,7 +1583,7 @@ function renderCreatie(){
   <div class="wvgrid">
     <div class="inzbox"><div class="wvkop">💡 Ideeën <span class="count">${ideeen.length}</span></div>
       ${rw.weken!==null && rw.weken<2 ? `<div class="advies rood" style="margin-bottom:8px"><b>🔥 Voorraad bijna droog</b>Pak wat inspiratie hierboven.</div>`:''}
-      <div class="postgrid" style="grid-template-columns:1fr">${ideeen.map(cardHtml).join('') || '<div class="toel" style="margin:0">Nog geen ideeën — gebruik de inspiratie hierboven.</div>'}</div>
+      <div class="postgrid" style="grid-template-columns:1fr">${ideeen.map(cardHtml).join('') || '<div class="toel" style="margin:0">Nog geen ideeën — bewaar er een via Nieuwe post.</div>'}</div>
     </div>
     <div class="inzbox"><div class="wvkop">✍️ Script klaar <span class="count">${scripts.length}</span></div>
       <div class="postgrid" style="grid-template-columns:1fr">${scripts.map(cardHtml).join('') || '<div class="toel" style="margin:0">Nog niets klaar om in te plannen.</div>'}</div>
@@ -1630,8 +1614,6 @@ function renderCreatie(){
     updateChecklist();
   };
   el.querySelector('#c_video').onclick = () => { openEdit(null, {}); document.getElementById('f_format').value='Reel / video'; insertVideoTemplate(); };
-  el.querySelector('#insp_rol').onclick = () => { _comp.tekst = document.getElementById('c_tekst').value; rolInspiratie(); render(); };
-  el.querySelectorAll('[data-insp]').forEach(b=>b.onclick=()=>composerVul(_comp.insp[+b.dataset.insp]));
   el.querySelector('#afk_rol').onclick = () => { _comp.tekst = document.getElementById('c_tekst').value; rolAfkijk(); render(); };
   el.querySelectorAll('[data-afk]').forEach(b=>b.onclick=()=>{ const a=_afk[+b.dataset.afk]; composerVul({titel:a.t, hook:a.h}); });
   el.querySelector('#th_edit').onclick = () => {
