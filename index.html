@@ -83,7 +83,7 @@ nav.fases{background:#20301a;border-bottom:1px solid #33421f;padding:0 18px;disp
 .tr-dagkop.today{background:#fff6cc;box-shadow:inset 0 3px 0 #e6b800}
 .tr-dagkop.vrij,.tr-dag.vrij{background:repeating-linear-gradient(135deg,#f6f7f1 0 8px,#eef0e6 8px 16px)}
 .tr-past{font-size:10.5px;color:var(--red);font-weight:600}
-.tr-body{max-height:560px;overflow-y:auto;position:relative}
+.tr-body{position:relative;padding:8px 0}
 .tr-uren{position:sticky;left:0;z-index:3;background:var(--card);border-right:1px solid var(--line)}
 .tr-hoek{position:sticky;left:0;z-index:3;background:var(--card)}
 .tr-uur{position:absolute;right:6px;transform:translateY(-50%);font-size:10.5px;color:var(--muted);font-variant-numeric:tabular-nums}
@@ -2165,7 +2165,8 @@ function dagplanningHtml(dagen){
 }
 // ── Weekagenda als tijdrooster: uren 1–24 links, per dag de blokken op hun tijd (Bryan, 19 okt 2026) ──
 const UUR_PX = 44;            // hoogte van één uur
-let _trScroll = null;         // scrollpositie onthouden tussen verversingen
+const ROOSTER = [8, 18];      // rooster loopt van 08:00 t/m 18:00 (Bryan, 19 okt 2026)
+const rY = m => (m - ROOSTER[0]*60) / 60 * UUR_PX;   // minuten → pixels vanaf de bovenkant
 function tijdroosterHtml(dagen, today){
   const kop = dagen.map(d=>{
     const dt = new Date(d+'T12:00:00'), dow = dt.getDay(), vrij = VRIJE_DAGEN.includes(dow);
@@ -2186,7 +2187,7 @@ function tijdroosterHtml(dagen, today){
   const kolommen = dagen.map(d=>{
     const dow = new Date(d+'T12:00:00').getDay(), vrij = VRIJE_DAGEN.includes(dow);
     const ind = dagIndeling(d);
-    const blokken = ind.blokken.filter(b=>b.soort!=='lunch');
+    const blokken = ind.blokken.filter(b=>b.soort!=='lunch' && b.tot > ROOSTER[0]*60 && b.van < ROOSTER[1]*60);
     // alleen blokken die tegelijk vallen naast elkaar (per groep overlappende blokken)
     blokken.sort((x,y)=>x.van-y.van);
     for (let i = 0; i < blokken.length; ) {
@@ -2197,10 +2198,11 @@ function tijdroosterHtml(dagen, today){
       groep.forEach(b=>{ b.nBanen = banen.length; });
       i = j;
     }
-    const pos = b => `top:${b.van/60*UUR_PX}px;height:${Math.max(18,(b.tot-b.van)/60*UUR_PX-2)}px;left:calc(${b.baan*100/b.nBanen}% + 2px);width:calc(${100/b.nBanen}% - 4px)`;
-    const lunch = ind.blokken.filter(b=>b.soort==='lunch').map(b=>`<div class="tr-lunch" style="top:${b.van/60*UUR_PX}px;height:${(b.tot-b.van)/60*UUR_PX}px">🥪 lunch</div>`).join('');
+    const pos = b => { const van = Math.max(b.van, ROOSTER[0]*60), tot = Math.min(b.tot, ROOSTER[1]*60);
+      return `top:${rY(van)}px;height:${Math.max(18,(tot-van)/60*UUR_PX-2)}px;left:calc(${b.baan*100/b.nBanen}% + 2px);width:calc(${100/b.nBanen}% - 4px)`; };
+    const lunch = ind.blokken.filter(b=>b.soort==='lunch').map(b=>`<div class="tr-lunch" style="top:${rY(b.van)}px;height:${(b.tot-b.van)/60*UUR_PX}px">🥪 lunch</div>`).join('');
     const nu = new Date(), nuMin = nu.getHours()*60+nu.getMinutes();
-    return `<div class="tr-dag${d===today?' today':''}${vrij?' vrij':''}" style="height:${24*UUR_PX}px">
+    return `<div class="tr-dag${d===today?' today':''}${vrij?' vrij':''}" style="height:${(ROOSTER[1]-ROOSTER[0])*UUR_PX}px">
       ${lunch}
       ${blokken.map(b=>{
         if (b.soort==='afspraak') return `<div class="tr-blok tr-afspraak${b.a.k==='dagstart'?' ds':''}" data-afspraak="${b.a.k}" data-dag="${d}" style="${pos(b)}" title="${esc(b.a.txt)}"><b>${b.a.van}</b> ${b.a.ico} ${esc(b.a.titel)}</div>`;
@@ -2208,14 +2210,14 @@ function tijdroosterHtml(dagen, today){
         return `<div class="tr-blok tr-taak${t.klaar?' klaar':''}${b.vastetijd?' vast':''}" style="${pos(b)};--gc:${g.c}" title="${tStr(b.van)}–${tStr(b.tot)} · ${esc(t.tekst)} · ${esc(g.n)}${b.vastetijd?' · vaste tijd':''}">
           <input type="checkbox" data-tgl="${t.id}" ${t.klaar?'checked':''}><b>${tStr(b.van)}</b> ${esc(t.tekst)}</div>`;
       }).join('')}
-      ${d===today ? `<div class="tr-nu" style="top:${nuMin/60*UUR_PX}px"></div>` : ''}
+      ${d===today && nuMin>=ROOSTER[0]*60 && nuMin<=ROOSTER[1]*60 ? `<div class="tr-nu" style="top:${rY(nuMin)}px"></div>` : ''}
     </div>`;
   }).join('');
-  const uren = Array.from({length:24}, (_,i)=>i+1).map(h=>`<div class="tr-uur" style="top:${h*UUR_PX}px">${String(h).padStart(2,'0')}:00</div>`).join('');
+  const uren = Array.from({length:ROOSTER[1]-ROOSTER[0]+1}, (_,i)=>ROOSTER[0]+i).map(h=>`<div class="tr-uur" style="top:${rY(h*60)}px">${String(h).padStart(2,'0')}:00</div>`).join('');
   return `<div class="tr" style="--n:${dagen.length}">
     <div class="tr-rij tr-koprij"><div class="tr-hoek"></div>${kop}</div>
     <div class="tr-body" id="tr_body">
-      <div class="tr-rij"><div class="tr-uren" style="height:${24*UUR_PX}px">${uren}</div>${kolommen}</div>
+      <div class="tr-rij"><div class="tr-uren" style="height:${(ROOSTER[1]-ROOSTER[0])*UUR_PX}px">${uren}</div>${kolommen}</div>
     </div>
   </div>`;
 }
@@ -2254,8 +2256,6 @@ function renderWeek(){
       ${state.takenV2===false ? `<div class="advies rood" style="margin:0"><b>⚙️ Eén keer instellen</b>Voor taakgebieden en tijd moet <b>supabase/migratie-taakgebieden.sql</b> (uit de repo) in de Supabase SQL Editor gedraaid worden. Je taken blijven gewoon werken.</div>` : weekBalansHtml(dagen)}
     </div>
   </div>`;
-  const trBody = el.querySelector('#tr_body');
-  if (trBody) { trBody.scrollTop = _trScroll ?? (tMin(WERKTIJD.van)-30)/60*UUR_PX; trBody.onscroll = ()=>{ _trScroll = trBody.scrollTop; }; }
   el.querySelectorAll('[data-open]').forEach(r=>r.onclick=(e)=>{ e.stopPropagation(); openEdit(r.dataset.open); });
   el.querySelectorAll('[data-goto]').forEach(r=>r.onclick=()=>{ view=r.dataset.goto; localStorage.setItem('mkt_view',view); render(); });
   el.querySelectorAll('[data-tgl]').forEach(c=>c.onclick=(e)=>{ e.stopPropagation(); toggleTaak(c.dataset.tgl, c.checked); });
