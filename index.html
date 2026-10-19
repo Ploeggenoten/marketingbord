@@ -94,7 +94,9 @@ nav.fases{background:#20301a;border-bottom:1px solid #33421f;padding:0 18px;disp
 .tr-blok b{font-weight:800;font-variant-numeric:tabular-nums}
 .tr-afspraak{background:#eef1e6;border:1px dashed #b9c49a;color:#3f4a2a;cursor:pointer}
 .tr-afspraak.ds{background:#fff6dc;border-color:#e2c46d;color:#6b5210}
-.tr-taak{background:#fff;border:1px solid var(--line);border-left:4px solid var(--gc)}
+.tr-taak{background:#fff;border:1px solid var(--line);border-left:4px solid var(--gc);cursor:grab;touch-action:none;user-select:none}
+.tr-taak:hover{box-shadow:0 1px 4px rgba(0,0,0,.12)}
+.tr-taak.sleept{cursor:grabbing;z-index:5;box-shadow:0 6px 16px rgba(0,0,0,.22);opacity:.92;outline:2px solid var(--gc)}
 .tr-taak.vast{background:#fffdf2}
 .tr-taak.klaar{opacity:.55;text-decoration:line-through}
 .tr-taak input{width:12px;height:12px;margin:0 4px 0 0;vertical-align:-2px;accent-color:#6b9a2f;cursor:pointer}
@@ -2202,12 +2204,12 @@ function tijdroosterHtml(dagen, today){
       return `top:${rY(van)}px;height:${Math.max(18,(tot-van)/60*UUR_PX-2)}px;left:calc(${b.baan*100/b.nBanen}% + 2px);width:calc(${100/b.nBanen}% - 4px)`; };
     const lunch = ind.blokken.filter(b=>b.soort==='lunch').map(b=>`<div class="tr-lunch" style="top:${rY(b.van)}px;height:${(b.tot-b.van)/60*UUR_PX}px">🥪 lunch</div>`).join('');
     const nu = new Date(), nuMin = nu.getHours()*60+nu.getMinutes();
-    return `<div class="tr-dag${d===today?' today':''}${vrij?' vrij':''}" style="height:${(ROOSTER[1]-ROOSTER[0])*UUR_PX}px">
+    return `<div class="tr-dag${d===today?' today':''}${vrij?' vrij':''}" data-trdag="${d}" style="height:${(ROOSTER[1]-ROOSTER[0])*UUR_PX}px">
       ${lunch}
       ${blokken.map(b=>{
         if (b.soort==='afspraak') return `<div class="tr-blok tr-afspraak${b.a.k==='dagstart'?' ds':''}" data-afspraak="${b.a.k}" data-dag="${d}" style="${pos(b)}" title="${esc(b.a.txt)}"><b>${b.a.van}</b> ${b.a.ico} ${esc(b.a.titel)}</div>`;
         const t = b.t, g = gebied(t.gebied);
-        return `<div class="tr-blok tr-taak${t.klaar?' klaar':''}${b.vastetijd?' vast':''}" style="${pos(b)};--gc:${g.c}" title="${tStr(b.van)}–${tStr(b.tot)} · ${esc(t.tekst)} · ${esc(g.n)}${b.vastetijd?' · vaste tijd':''}">
+        return `<div class="tr-blok tr-taak${t.klaar?' klaar':''}${b.vastetijd?' vast':''}" data-tid="${t.id}" style="${pos(b)};--gc:${g.c}" title="${tStr(b.van)}–${tStr(b.tot)} · ${esc(t.tekst)} · ${esc(g.n)}${b.vastetijd?' · vaste tijd':''} — sleep om te verplaatsen">
           <input type="checkbox" data-tgl="${t.id}" ${t.klaar?'checked':''}><b>${tStr(b.van)}</b> ${esc(t.tekst)}</div>`;
       }).join('')}
       ${d===today && nuMin>=ROOSTER[0]*60 && nuMin<=ROOSTER[1]*60 ? `<div class="tr-nu" style="top:${rY(nuMin)}px"></div>` : ''}
@@ -2220,6 +2222,46 @@ function tijdroosterHtml(dagen, today){
       <div class="tr-rij"><div class="tr-uren" style="height:${(ROOSTER[1]-ROOSTER[0])*UUR_PX}px">${uren}</div>${kolommen}</div>
     </div>
   </div>`;
+}
+// Taak verslepen in het tijdrooster: naar een ander tijdstip (per kwartier) of een andere dag.
+// Na loslaten krijgt de taak die tijd als vaste tijd.
+function sleepTaken(el){
+  el.querySelectorAll('.tr-taak[data-tid]').forEach(blok=>{
+    blok.onpointerdown = e=>{
+      if (e.button !== 0 || e.target.matches('input')) return;
+      const t = (state.taken||[]).find(x=>x.id===blok.dataset.tid); if (!t) return;
+      const start = { x:e.clientX, y:e.clientY, grabY: e.clientY - blok.getBoundingClientRect().top };
+      let gesleept = false, doel = null;
+      const tijdLabel = blok.querySelector('b');
+      const beweeg = ev=>{
+        if (!gesleept && Math.hypot(ev.clientX-start.x, ev.clientY-start.y) < 5) return;
+        if (!gesleept) { gesleept = true; blok.classList.add('sleept'); blok.setPointerCapture?.(e.pointerId); }
+        const kol = document.elementsFromPoint(ev.clientX, ev.clientY).map(x=>x.closest?.('.tr-dag')).find(Boolean);
+        if (!kol) return;
+        if (blok.parentElement !== kol) { kol.appendChild(blok); blok.style.left = '2px'; blok.style.width = 'calc(100% - 4px)'; }
+        const y = ev.clientY - kol.getBoundingClientRect().top - start.grabY;
+        const duur = t.duur_min || 60;
+        let min = Math.round((ROOSTER[0]*60 + y/UUR_PX*60) / 15) * 15;
+        min = Math.max(ROOSTER[0]*60, Math.min(ROOSTER[1]*60 - Math.min(duur, 60), min));
+        blok.style.top = rY(min) + 'px';
+        if (tijdLabel) tijdLabel.textContent = tStr(min);
+        doel = { datum: kol.dataset.trdag, tijd: tStr(min) };
+      };
+      const los = async ()=>{
+        document.removeEventListener('pointermove', beweeg);
+        document.removeEventListener('pointerup', los);
+        if (!gesleept || !doel) return;
+        blok.classList.remove('sleept');
+        if (state.takenTijd === false) { toast('Verslepen naar een tijd werkt pas na migratie-taaktijd.sql in Supabase'); render(); return; }
+        if (doel.datum === t.datum && doel.tijd === t.tijd) { render(); return; }
+        await updTaak(t.id, { datum: doel.datum, tijd: doel.tijd });
+        toast(`🕑 ${t.tekst} → ${dagLabel(doel.datum)} ${doel.tijd}`);
+      };
+      document.addEventListener('pointermove', beweeg);
+      document.addEventListener('pointerup', los);
+      e.preventDefault();
+    };
+  });
 }
 function renderWeek(){
   const el = document.getElementById('week');
@@ -2256,6 +2298,7 @@ function renderWeek(){
       ${state.takenV2===false ? `<div class="advies rood" style="margin:0"><b>⚙️ Eén keer instellen</b>Voor taakgebieden en tijd moet <b>supabase/migratie-taakgebieden.sql</b> (uit de repo) in de Supabase SQL Editor gedraaid worden. Je taken blijven gewoon werken.</div>` : weekBalansHtml(dagen)}
     </div>
   </div>`;
+  sleepTaken(el);
   el.querySelectorAll('[data-open]').forEach(r=>r.onclick=(e)=>{ e.stopPropagation(); openEdit(r.dataset.open); });
   el.querySelectorAll('[data-goto]').forEach(r=>r.onclick=()=>{ view=r.dataset.goto; localStorage.setItem('mkt_view',view); render(); });
   el.querySelectorAll('[data-tgl]').forEach(c=>c.onclick=(e)=>{ e.stopPropagation(); toggleTaak(c.dataset.tgl, c.checked); });
