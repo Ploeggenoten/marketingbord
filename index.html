@@ -48,8 +48,6 @@ nav.fases{background:#20301a;border-bottom:1px solid #33421f;padding:0 18px;disp
 .spieklijst{margin-top:8px;font-size:12.5px;line-height:1.9}
 .spieklijst a{color:#3a5416;font-weight:600}
 /* Mijn week-planner */
-.dk-thema{font-size:11px;color:#5a712f;font-weight:600}
-.dk-ritme{font-size:11px;color:#8a7a4a;background:#faf6e8;border-radius:8px;padding:4px 7px}
 .taakrow{display:flex;align-items:center;gap:7px;font-size:12.5px;padding:3px 0}
 .taakrow input[type=checkbox]{accent-color:#6b9a2f;width:15px;height:15px;flex:none;cursor:pointer}
 .taakrow .tt{flex:1;min-width:0;overflow-wrap:anywhere}
@@ -1804,7 +1802,7 @@ function weekBalansHtml(dagen){
     <div class="toel" style="margin:8px 0 0;font-size:11.5px">Telt je eigen taken met hun geschatte tijd plus de vaste afspraken (dagstart, weekendcheck). Licht = gepland, donker = afgerond. Klik op het gekleurde chipje van een taak om het gebied te wisselen, op de tijd om die aan te passen.</div>`;
 }
 // Dagstart (08:30–09:00): Meta-punten bespreken en de dagtaken invoeren → taken in de agenda
-function dagstartHtml(dagen){
+function dagstartBlokHtml(dagen){
   const today = todayISO();
   const metDs = dagen.filter(d=>afsprakenOp(d).some(a=>a.k==='dagstart'));
   if (!dsDatum || !dagen.includes(dsDatum)) dsDatum = metDs.find(d=>d>=today) || metDs[0] || dagen[0];
@@ -1840,7 +1838,6 @@ function renderWeek(){
   const setup = T===null ? `<div class="advies rood" style="margin-bottom:12px"><b>⚙️ Eén keer instellen</b>De taken-tabel bestaat nog niet. Tjeerd: plak <b>supabase/migratie-taken.sql</b> (uit de repo) in de Supabase SQL Editor. Alles hieronder werkt daarna vanzelf.</div>` : '';
   const openOud = (T||[]).filter(t=>!t.klaar && t.datum<today && t.datum<dagen[0]);
   const auto = autoTakenVandaag();
-  const wkTh = themas();
   const wkLabel = weekOffset===0?'deze week':weekOffset===1?'volgende week':weekOffset===-1?'vorige week':'';
   const d0 = new Date(dagen[0]+'T12:00:00'), d6 = new Date(dagen[6]+'T12:00:00');
   const wkTitel = `Week ${isoWeek(d0)} · ${d0.getDate()}${d0.getMonth()!==d6.getMonth()?' '+d0.toLocaleDateString('nl-NL',{month:'short'}):''} – ${d6.toLocaleDateString('nl-NL',{day:'numeric',month:'long'})}`;
@@ -1871,9 +1868,7 @@ function renderWeek(){
           <div class="wk-kop"><b>${DAGNAMEN[dow]}</b> <span>${dt.getDate()} ${dt.toLocaleDateString('nl-NL',{month:'short'})}</span>${d===today?'<em>vandaag</em>':vrij?'<em class="vrijlabel">vrij</em>':''}</div>
           <div class="wk-uren${min>DAG_UREN*60?' vol':''}" title="${fmtUren(min)} van ${DAG_UREN} uur gepland"><i style="width:${vol}%"></i></div>
           <div class="wk-urentxt${min>DAG_UREN*60?' vol':''}">${min?`${fmtUren(min)} / ${DAG_UREN} uur`:vrij?'vrije dag':'nog niets gepland'}</div>
-          <div class="dk-thema">📅 ${esc((wkTh[dow]||'').split('—')[0].trim())}</div>
           ${tijdlijn.map(x=>x.html).join('')}
-          ${WEEKRITME[dow]?`<div class="dk-ritme">${esc(WEEKRITME[dow])}</div>`:''}
           ${taken.map(taakRij).join('')}
         </div>`;
       }).join('')}
@@ -1887,7 +1882,7 @@ function renderWeek(){
     </div>
   </div>
   <div class="inzgrid">
-    ${dagstartHtml(dagen)}
+    ${dagstartBlokHtml(dagen)}
     ${weekOffset===0 ? `<div class="inzbox"><h4>☀️ Vandaag — dit staat er voor je klaar</h4>
       ${auto.map(i=>`<div class="planrow${i.rood?' gemist':''}${i.done?' taakklaar':''}" ${i.open?`data-open="${i.open}"`:''} ${i.goto?`data-goto="${i.goto}"`:''} style="cursor:pointer"><span>${i.ico}</span><span class="pt">${i.txt}</span></div>`).join('')}
       ${(T||[]).filter(t=>t.datum===today).map(taakRij).join('')}
