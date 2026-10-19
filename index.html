@@ -75,6 +75,32 @@ nav.fases{background:#20301a;border-bottom:1px solid #33421f;padding:0 18px;disp
 .balansrij .bbar div.af{opacity:1}
 .balansrij .buren{text-align:right;color:var(--muted);font-variant-numeric:tabular-nums}
 @media (max-width:560px){ .balansrij{grid-template-columns:110px 1fr 70px} }
+/* Tijdrooster (weekagenda) */
+.tr{overflow-x:auto}
+.tr-rij{display:grid;grid-template-columns:54px repeat(var(--n),minmax(118px,1fr));min-width:calc(54px + var(--n)*118px)}
+.tr-koprij{border-bottom:1px solid var(--line)}
+.tr-dagkop{padding:7px 7px 8px;border-left:1px solid #e6e9db;display:flex;flex-direction:column;gap:4px;cursor:pointer;min-width:0}
+.tr-dagkop.today{background:#fff6cc;box-shadow:inset 0 3px 0 #e6b800}
+.tr-dagkop.vrij,.tr-dag.vrij{background:repeating-linear-gradient(135deg,#f6f7f1 0 8px,#eef0e6 8px 16px)}
+.tr-past{font-size:10.5px;color:var(--red);font-weight:600}
+.tr-body{max-height:560px;overflow-y:auto;position:relative}
+.tr-uren{position:sticky;left:0;z-index:3;background:var(--card);border-right:1px solid var(--line)}
+.tr-hoek{position:sticky;left:0;z-index:3;background:var(--card)}
+.tr-uur{position:absolute;right:6px;transform:translateY(-50%);font-size:10.5px;color:var(--muted);font-variant-numeric:tabular-nums}
+.tr-dag{position:relative;border-left:1px solid #e6e9db;
+  background-image:repeating-linear-gradient(to bottom,transparent 0,transparent calc(44px - 1px),#e8ebdd calc(44px - 1px),#e8ebdd 44px)}
+.tr-dag.today{background-color:#fffbe6}
+.tr-blok{position:absolute;border-radius:6px;padding:2px 5px;font-size:11px;line-height:1.3;overflow:hidden;box-sizing:border-box;cursor:default}
+.tr-blok b{font-weight:800;font-variant-numeric:tabular-nums}
+.tr-afspraak{background:#eef1e6;border:1px dashed #b9c49a;color:#3f4a2a;cursor:pointer}
+.tr-afspraak.ds{background:#fff6dc;border-color:#e2c46d;color:#6b5210}
+.tr-taak{background:#fff;border:1px solid var(--line);border-left:4px solid var(--gc)}
+.tr-taak.vast{background:#fffdf2}
+.tr-taak.klaar{opacity:.55;text-decoration:line-through}
+.tr-taak input{width:12px;height:12px;margin:0 4px 0 0;vertical-align:-2px;accent-color:#6b9a2f;cursor:pointer}
+.tr-lunch{position:absolute;left:0;right:0;background:repeating-linear-gradient(135deg,#f3f4ee 0 6px,#eceee4 6px 12px);font-size:10px;color:var(--muted);padding:2px 6px;box-sizing:border-box}
+.tr-nu{position:absolute;left:0;right:0;height:2px;background:var(--red);z-index:2}
+.tr-nu::before{content:'';position:absolute;left:-4px;top:-3px;width:8px;height:8px;border-radius:50%;background:var(--red)}
 /* Dagplanning + dagafsluiting */
 .dagplan{margin-bottom:12px}
 .dp-dagen{display:flex;gap:5px;flex-wrap:wrap}
@@ -153,14 +179,6 @@ nav.fases{background:#20301a;border-bottom:1px solid #33421f;padding:0 18px;disp
 .ds-ok{flex:none;font-size:11.5px;font-weight:700;color:var(--green)}
 /* Weekagenda bovenaan Mijn week (zelfde stijl als de kalender in Planning) */
 .wkagenda{margin-bottom:12px}
-.wkgrid{display:grid;grid-template-columns:repeat(5,minmax(0,1fr))}
-.wkcell{min-height:200px;border-right:1px solid #e6e9db;border-bottom:1px solid #e6e9db;padding:8px 8px 10px;display:flex;flex-direction:column;gap:5px;cursor:pointer;min-width:0}
-.wkcell:last-child{border-right:none}
-.wkcell:hover{background:#f6f8ef}
-.wkcell.today{background:#fff6cc;box-shadow:inset 0 3px 0 #e6b800}
-.wkcell.today:hover{background:#fff1b3}
-.wkcell.past{background:#f7f8f2}
-.wkcell.vrij{background:repeating-linear-gradient(135deg,#f6f7f1 0 8px,#eef0e6 8px 16px)}
 .wk-kop em.vrijlabel{background:#8a917c}
 .wk-kop{display:flex;align-items:baseline;gap:6px;font-size:12px;color:var(--muted)}
 .wk-kop b{font-family:var(--disp);font-weight:400;font-size:15px;letter-spacing:.05em;text-transform:uppercase;color:var(--txt)}
@@ -173,13 +191,7 @@ nav.fases{background:#20301a;border-bottom:1px solid #33421f;padding:0 18px;disp
 .wkpost{font-size:11px;font-weight:600;color:#fff;background:var(--kan,#9aa3b2);border-radius:6px;padding:3px 7px;line-height:1.35;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
 .wkpost .wkkan{font-size:9.5px;font-weight:800;opacity:.75;margin-left:3px}
 .wkpost.done{opacity:.65}.wkpost.missed{outline:2px solid var(--red)}
-.wkcell .taakrow{flex-wrap:wrap;row-gap:3px;align-items:flex-start;background:#fff;border-radius:6px;padding:3px 4px 3px 6px}
-.wkcell .taakrow input[type=checkbox]{margin:1px 0 0}
-.wkcell .taakrow .tt{flex:1 1 calc(100% - 30px);font-size:12px}
-.wkcell .taakrow .gchip{margin-left:22px}
 .wk-form{padding:10px 14px 12px;margin-top:0;background:#fbfcf8}
-@media (max-width:980px){ .wkgrid{grid-template-columns:repeat(2,minmax(0,1fr))} .wkcell{min-height:0} .wkcell:nth-child(2n){border-right:none} }
-@media (max-width:560px){ .wkgrid{grid-template-columns:1fr} .wkcell{border-right:none} }
 .inspkaart .it2{font-weight:600;font-size:13.5px;line-height:1.3}
 .inspkaart .ih2{font-size:12px;color:#2f6a8a;font-style:italic;flex:1}
 .inspkaart .gebruik{align-self:flex-start;background:var(--glove);color:#fff;border:none;border-radius:7px;font-size:12px;font-weight:600;padding:6px 12px;cursor:pointer}
@@ -2151,6 +2163,62 @@ function dagplanningHtml(dagen){
     </div>
   </div>`;
 }
+// ── Weekagenda als tijdrooster: uren 1–24 links, per dag de blokken op hun tijd (Bryan, 19 okt 2026) ──
+const UUR_PX = 44;            // hoogte van één uur
+let _trScroll = null;         // scrollpositie onthouden tussen verversingen
+function tijdroosterHtml(dagen, today){
+  const kop = dagen.map(d=>{
+    const dt = new Date(d+'T12:00:00'), dow = dt.getDay(), vrij = VRIJE_DAGEN.includes(dow);
+    const taken = (state.taken||[]).filter(t=>t.datum===d), afs = afsprakenOp(d);
+    const min = taken.reduce((s,t)=>s+(t.duur_min||0),0) + afs.reduce((s,a)=>s+afspraakMin(a),0);
+    const vol = Math.min(100, min/(DAG_UREN*60)*100);
+    const posts = state.posts.filter(p=>p.datum===d && (p.fase==='Ingepland'||PUB(p)));
+    const past = dagIndeling(d).past;
+    return `<div class="tr-dagkop${d===today?' today':''}${vrij?' vrij':''}" data-dagadd="${d}">
+      <div class="wk-kop"><b>${DAGNAMEN[dow]}</b> <span>${dt.getDate()} ${dt.toLocaleDateString('nl-NL',{month:'short'})}</span>${d===today?'<em>vandaag</em>':vrij?'<em class="vrijlabel">vrij</em>':''}</div>
+      <div class="wk-uren${min>DAG_UREN*60?' vol':''}" title="${fmtUren(min)} van ${DAG_UREN} uur gepland"><i style="width:${vol}%"></i></div>
+      <div class="wk-urentxt${min>DAG_UREN*60?' vol':''}">${min?`${fmtUren(min)} / ${DAG_UREN} uur`:vrij?'vrije dag':'nog niets gepland'}</div>
+      ${groepeer(posts).map(g=>{ const w = groepWeergave(g), p = w.p;
+        return `<div class="wkpost${w.done?' done':''}${w.ingepland&&d<today?' missed':''}" data-open="${p.id}" style="--kan:${w.kleur};color:${w.tekst}" title="Post: ${esc(p.titel)} · ${esc(w.kanalen.join(' + '))}">${esc(p.titel)}${w.label?` <span class="wkkan">${w.label}</span>`:''}</div>`; }).join('')}
+      ${past.map(t=>`<div class="tr-past" title="Past niet meer op deze dag">⚠ ${esc(t.tekst)}</div>`).join('')}
+    </div>`;
+  }).join('');
+  const kolommen = dagen.map(d=>{
+    const dow = new Date(d+'T12:00:00').getDay(), vrij = VRIJE_DAGEN.includes(dow);
+    const ind = dagIndeling(d);
+    const blokken = ind.blokken.filter(b=>b.soort!=='lunch');
+    // alleen blokken die tegelijk vallen naast elkaar (per groep overlappende blokken)
+    blokken.sort((x,y)=>x.van-y.van);
+    for (let i = 0; i < blokken.length; ) {
+      let eind = blokken[i].tot, j = i + 1;
+      while (j < blokken.length && blokken[j].van < eind) { eind = Math.max(eind, blokken[j].tot); j++; }
+      const groep = blokken.slice(i, j), banen = [];
+      groep.forEach(b=>{ let k = banen.findIndex(e=>e<=b.van); if (k<0) { k = banen.length; banen.push(0); } banen[k] = b.tot; b.baan = k; });
+      groep.forEach(b=>{ b.nBanen = banen.length; });
+      i = j;
+    }
+    const pos = b => `top:${b.van/60*UUR_PX}px;height:${Math.max(18,(b.tot-b.van)/60*UUR_PX-2)}px;left:calc(${b.baan*100/b.nBanen}% + 2px);width:calc(${100/b.nBanen}% - 4px)`;
+    const lunch = ind.blokken.filter(b=>b.soort==='lunch').map(b=>`<div class="tr-lunch" style="top:${b.van/60*UUR_PX}px;height:${(b.tot-b.van)/60*UUR_PX}px">🥪 lunch</div>`).join('');
+    const nu = new Date(), nuMin = nu.getHours()*60+nu.getMinutes();
+    return `<div class="tr-dag${d===today?' today':''}${vrij?' vrij':''}" style="height:${24*UUR_PX}px">
+      ${lunch}
+      ${blokken.map(b=>{
+        if (b.soort==='afspraak') return `<div class="tr-blok tr-afspraak${b.a.k==='dagstart'?' ds':''}" data-afspraak="${b.a.k}" data-dag="${d}" style="${pos(b)}" title="${esc(b.a.txt)}"><b>${b.a.van}</b> ${b.a.ico} ${esc(b.a.titel)}</div>`;
+        const t = b.t, g = gebied(t.gebied);
+        return `<div class="tr-blok tr-taak${t.klaar?' klaar':''}${b.vastetijd?' vast':''}" style="${pos(b)};--gc:${g.c}" title="${tStr(b.van)}–${tStr(b.tot)} · ${esc(t.tekst)} · ${esc(g.n)}${b.vastetijd?' · vaste tijd':''}">
+          <input type="checkbox" data-tgl="${t.id}" ${t.klaar?'checked':''}><b>${tStr(b.van)}</b> ${esc(t.tekst)}</div>`;
+      }).join('')}
+      ${d===today ? `<div class="tr-nu" style="top:${nuMin/60*UUR_PX}px"></div>` : ''}
+    </div>`;
+  }).join('');
+  const uren = Array.from({length:24}, (_,i)=>i+1).map(h=>`<div class="tr-uur" style="top:${h*UUR_PX}px">${String(h).padStart(2,'0')}:00</div>`).join('');
+  return `<div class="tr" style="--n:${dagen.length}">
+    <div class="tr-rij tr-koprij"><div class="tr-hoek"></div>${kop}</div>
+    <div class="tr-body" id="tr_body">
+      <div class="tr-rij"><div class="tr-uren" style="height:${24*UUR_PX}px">${uren}</div>${kolommen}</div>
+    </div>
+  </div>`;
+}
 function renderWeek(){
   const el = document.getElementById('week');
   const today = todayISO();
@@ -2174,31 +2242,7 @@ function renderWeek(){
       <button class="calnav" id="wk_next">›</button>
       <span style="font-size:11.5px;color:var(--muted)">${wkLabel?wkLabel+' · ':''}klik op een dag om die te plannen</span>
     </div>
-    <div class="wkgrid">
-      ${agendaDagen.map(d=>{
-        const dt = new Date(d+'T12:00:00'); const dow = dt.getDay();
-        const posts = state.posts.filter(p=>p.datum===d && (p.fase==='Ingepland'||PUB(p))).sort((a,b)=>(a.tijd||'').localeCompare(b.tijd||''));
-        const taken = (T||[]).filter(t=>t.datum===d);
-        const afs = afsprakenOp(d);
-        const min = taken.reduce((s,t)=>s+(t.duur_min||0),0) + afs.reduce((s,a)=>s+afspraakMin(a),0);
-        const ind = dagIndeling(d);
-        const tijdlijn = [
-          ...ind.blokken.filter(b=>b.soort==='taak').map(b=>({ t:tStr(b.van), html: taakRij(b.t, tStr(b.van)) })),
-          ...ind.past.map(t=>({ t:'99', html: taakRij(t, '⚠') })),
-          ...afs.map(a=>({ t:a.van, html:`<div class="wkafspraak${a.k==='dagstart'?' ds':''}" data-afspraak="${a.k}" data-dag="${d}" title="${esc(a.txt)}"><b>${a.van}–${a.tot}</b> ${a.ico} ${esc(a.titel)}${a.k==='dagstart'&&d===today&&metaTeBespreken().length?` <span class="wkbadge">${metaTeBespreken().length}</span>`:''}</div>` })),
-          ...groepeer(posts).map(g=>{ const w = groepWeergave(g), p = w.p;
-            return { t:p.tijd||'99', html:`<div class="wkpost${w.done?' done':''}${w.ingepland&&d<today?' missed':''}" data-open="${p.id}" style="--kan:${w.kleur};color:${w.tekst}" title="${esc(p.titel)} · ${esc(w.kanalen.join(' + '))}">${p.tijd?p.tijd.slice(0,5)+' ':''}${esc(p.titel)}${w.label?` <span class="wkkan">${w.label}</span>`:''}</div>` }; }),
-        ].sort((a,b)=>a.t.localeCompare(b.t));
-        const vol = Math.min(100, min/(DAG_UREN*60)*100);
-        const vrij = VRIJE_DAGEN.includes(dow);
-        return `<div class="wkcell${d===today?' today':''}${d<today?' past':''}${vrij?' vrij':''}" data-dagadd="${d}">
-          <div class="wk-kop"><b>${DAGNAMEN[dow]}</b> <span>${dt.getDate()} ${dt.toLocaleDateString('nl-NL',{month:'short'})}</span>${d===today?'<em>vandaag</em>':vrij?'<em class="vrijlabel">vrij</em>':''}</div>
-          <div class="wk-uren${min>DAG_UREN*60?' vol':''}" title="${fmtUren(min)} van ${DAG_UREN} uur gepland"><i style="width:${vol}%"></i></div>
-          <div class="wk-urentxt${min>DAG_UREN*60?' vol':''}">${min?`${fmtUren(min)} / ${DAG_UREN} uur`:vrij?'vrije dag':'nog niets gepland'}</div>
-          ${tijdlijn.map(x=>x.html).join('')}
-        </div>`;
-      }).join('')}
-    </div>
+    ${tijdroosterHtml(agendaDagen, today)}
   </div>
   ${dagplanningHtml(dagen)}
   <div class="inzgrid">
@@ -2210,6 +2254,8 @@ function renderWeek(){
       ${state.takenV2===false ? `<div class="advies rood" style="margin:0"><b>⚙️ Eén keer instellen</b>Voor taakgebieden en tijd moet <b>supabase/migratie-taakgebieden.sql</b> (uit de repo) in de Supabase SQL Editor gedraaid worden. Je taken blijven gewoon werken.</div>` : weekBalansHtml(dagen)}
     </div>
   </div>`;
+  const trBody = el.querySelector('#tr_body');
+  if (trBody) { trBody.scrollTop = _trScroll ?? (tMin(WERKTIJD.van)-30)/60*UUR_PX; trBody.onscroll = ()=>{ _trScroll = trBody.scrollTop; }; }
   el.querySelectorAll('[data-open]').forEach(r=>r.onclick=(e)=>{ e.stopPropagation(); openEdit(r.dataset.open); });
   el.querySelectorAll('[data-goto]').forEach(r=>r.onclick=()=>{ view=r.dataset.goto; localStorage.setItem('mkt_view',view); render(); });
   el.querySelectorAll('[data-tgl]').forEach(c=>c.onclick=(e)=>{ e.stopPropagation(); toggleTaak(c.dataset.tgl, c.checked); });
