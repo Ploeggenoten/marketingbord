@@ -732,7 +732,9 @@ async function loadFromDB(){
   const tR = await sb.from('mkt_taken').select('*').order('datum').order('created_at');
   state.taken = tR.error ? null : (tR.data||[]).filter(t=>t.datum>=STARTDATUM);
   if (state.taken?.length) state.takenTijd = 'tijd' in state.taken[0];
+  if (state.taken?.length) state.takenOutlook = 'outlook_id' in state.taken[0];
   autoDoorschuiven();
+  teamsSyncLater();
   // Taakgebied/duur bestaan pas na migratie-taakgebieden.sql (lege tabel: aannemen dat het er is; addTaak vangt het op)
   if (state.taken?.length) state.takenV2 = 'gebied' in state.taken[0];
 }
@@ -2083,14 +2085,18 @@ async function updTaak(id, patch){
   const { error } = await sb.from('mkt_taken').update(patch).eq('id', id);
   if (error) { toast('Opslaan mislukt — is migratie-taakgebieden.sql al gedraaid?'); return; }
   const t = (state.taken||[]).find(x=>x.id===id); if (t) Object.assign(t, patch);
+  teamsSyncLater();
   render();
 }
 async function toggleTaak(id, klaar){
   await sb.from('mkt_taken').update({ klaar }).eq('id', id);
   const t = (state.taken||[]).find(x=>x.id===id); if (t) t.klaar = klaar;
+  teamsSyncLater();
   render();
 }
 async function delTaak(id){
+  const t = (state.taken||[]).find(x=>x.id===id);
+  if (t?.outlook_id && olAan()) graph('/me/events/'+t.outlook_id, { method:'DELETE' }).catch(()=>{});
   await sb.from('mkt_taken').delete().eq('id', id);
   state.taken = (state.taken||[]).filter(x=>x.id!==id);
   render();
@@ -2288,6 +2294,114 @@ function klikNieuweTaak(el){
     };
   });
 }
+// ── Teams/Outlook-agenda: taken uit het bord als afspraken in je eigen agenda (Bryan, 19 okt 2026) ──
+// Hergebruikt de app-registratie "Ploeggenoten CRM" (single tenant, Calendars.ReadWrite met
+// beheerderstoestemming). Vereist dat Tjeerd de redirect-URI's van het marketingbord toevoegt
+// (zie supabase/SETUP-TEAMS-AGENDA.md). Eenrichtingsverkeer: bord → agenda. Per taak bewaren we
+// het id van de afspraak (outlook_id) en een vingerafdruk (outlook_sync) om alleen echte
+// wijzigingen door te sturen.
+const MS_CLIENT_ID = 'd07d8bf0-82b1-426e-89c6-3ae11393b982';
+const MS_TENANT_ID = 'c0436a3b-5aa8-4ada-bd4d-a3138ec11fa6';
+const MS_SCOPES = ['User.Read','Calendars.ReadWrite'];
+const OL_KEY = 'mkt_outlook';
+let _msal = null, _msAccount = null, _msLaad = null, _olBezig = false, _olTimer = null;
+const olAan = () => { try { return localStorage.getItem(OL_KEY)==='1'; } catch(e) { return false; } };
+function msalLaden(){
+  if (_msLaad) return _msLaad;
+  _msLaad = new Promise((ok, nee)=>{
+    if (window.msal) return ok();
+    const sc = document.createElement('script');
+    sc.src = 'https://cdn.jsdelivr.net/npm/@azure/msal-browser@2.38.4/lib/msal-browser.min.js';
+    sc.onload = ()=> window.msal ? ok() : nee(new Error('MSAL niet geladen'));
+    sc.onerror = ()=> nee(new Error('MSAL niet geladen'));
+    document.head.appendChild(sc);
+  }).then(()=>{
+    _msal = new msal.PublicClientApplication({
+      auth:{ clientId:MS_CLIENT_ID, authority:'https://login.microsoftonline.com/'+MS_TENANT_ID, redirectUri: location.origin + location.pathname },
+      cache:{ cacheLocation:'localStorage' } });
+    const mijn = String(currentUser?.email||'').toLowerCase();
+    _msAccount = _msal.getAllAccounts().find(a=>String(a.username||'').toLowerCase()===mijn) || null;
+  });
+  return _msLaad;
+}
+async function msToken(interactief){
+  await msalLaden();
+  if (!_msAccount) {
+    if (!interactief) return null;
+    const hint = String(currentUser?.email||'');
+    const r = await _msal.loginPopup({ scopes:MS_SCOPES, ...(hint?{ loginHint:hint, prompt:'select_account' }:{}) });
+    if (hint && String(r.account?.username||'').toLowerCase() !== hint.toLowerCase()) {
+      toast(`Je koos ${r.account?.username}, maar je bent in het bord ingelogd als ${hint} — kies dat account`); return null;
+    }
+    _msAccount = r.account;
+  }
+  try { return (await _msal.acquireTokenSilent({ scopes:MS_SCOPES, account:_msAccount })).accessToken; }
+  catch(e) {
+    try { const r = await _msal.ssoSilent({ scopes:MS_SCOPES, loginHint:_msAccount.username }); if (r?.accessToken) return r.accessToken; } catch(e2) {}
+    if (!interactief) return null;
+    return (await _msal.acquireTokenPopup({ scopes:MS_SCOPES, account:_msAccount })).accessToken;
+  }
+}
+async function graph(pad, opties={}, interactief=false){
+  const t = await msToken(interactief); if (!t) throw new Error('niet verbonden');
+  const r = await fetch('https://graph.microsoft.com/v1.0'+pad, { ...opties,
+    headers:{ Authorization:'Bearer '+t, 'Content-Type':'application/json' }, body: opties.body ? JSON.stringify(opties.body) : undefined });
+  if (r.status===204) return {};
+  const d = await r.json().catch(()=>null);
+  if (!r.ok) { const f = new Error(d?.error?.message || 'Graph-fout '+r.status); f.status = r.status; throw f; }
+  return d;
+}
+async function teamsKoppelen(){
+  if (state.takenOutlook === false) { toast('Draai eerst migratie-taak-outlook.sql in Supabase'); return; }
+  try {
+    const t = await msToken(true);
+    if (!t) return;
+    try { localStorage.setItem(OL_KEY,'1'); } catch(e) {}
+    toast('🔗 Teams-agenda gekoppeld — je taken worden nu in je agenda gezet');
+    render(); await teamsSync(true);
+  } catch(e) {
+    const m = String(e?.message||e);
+    toast(/AADSTS50011|redirect/i.test(m) ? 'Koppelen kan nog niet: Tjeerd moet het adres van het marketingbord toevoegen in Microsoft (zie SETUP-TEAMS-AGENDA.md)'
+        : /popup|block/i.test(m) ? 'Het inlogvenster werd geblokkeerd — sta pop-ups toe voor dit bord' : 'Koppelen mislukt: '+m);
+  }
+}
+function teamsOntkoppelen(){ try { localStorage.removeItem(OL_KEY); } catch(e) {} toast('Teams-agenda ontkoppeld (bestaande afspraken blijven staan)'); render(); }
+function teamsSyncLater(){ if (!olAan()) return; clearTimeout(_olTimer); _olTimer = setTimeout(()=>teamsSync(false), 2500); }
+async function teamsSync(handmatig){
+  if (!olAan() || _olBezig || !state.taken || state.takenOutlook === false) return;
+  _olBezig = true;
+  let n = 0;
+  try {
+    const today = todayISO(), mijn = currentProfile?.naam || '';
+    const taken = state.taken.filter(t=>t.datum >= today && (!t.door || t.door===mijn));
+    for (const t of taken) {
+      const ind = dagIndeling(t.datum), b = ind.blokken.find(x=>x.t?.id===t.id);
+      if (!b) {   // past niet (meer) op de dag → geen afspraak
+        if (t.outlook_id) { await graph('/me/events/'+t.outlook_id, { method:'DELETE' }).catch(()=>{}); await bewaarOl(t, '', ''); n++; }
+        continue;
+      }
+      const sig = [t.datum, tStr(b.van), tStr(b.tot), t.tekst, t.klaar?1:0].join('|');
+      if (t.outlook_id && t.outlook_sync === sig) continue;
+      const ev = { subject:(t.klaar?'✓ ':'')+t.tekst,
+        start:{ dateTime:`${t.datum}T${tStr(b.van)}:00`, timeZone:'Europe/Amsterdam' },
+        end:{ dateTime:`${t.datum}T${tStr(b.tot)}:00`, timeZone:'Europe/Amsterdam' },
+        showAs:'busy', isReminderOn:false, categories:['Marketingbord'],
+        body:{ contentType:'text', content:`Taak uit het Ploeggenoten-marketingbord (${gebied(t.gebied).n}).` } };
+      let id = t.outlook_id;
+      if (id) { try { await graph('/me/events/'+id, { method:'PATCH', body:ev }); } catch(e) { if (e.status===404) id = ''; else throw e; } }
+      if (!id) id = (await graph('/me/events', { method:'POST', body:ev })).id;
+      await bewaarOl(t, id, sig); n++;
+    }
+    if (handmatig) toast(n ? `🔗 ${n} ${n>1?'taken':'taak'} bijgewerkt in je Teams-agenda` : '🔗 Teams-agenda is al bij');
+  } catch(e) {
+    if (handmatig || e.status===401) toast('Teams-agenda bijwerken lukte niet: '+(e.message||e));
+  } finally { _olBezig = false; }
+}
+async function bewaarOl(t, id, sig){
+  const { error } = await sb.from('mkt_taken').update({ outlook_id:id, outlook_sync:sig }).eq('id', t.id);
+  if (error) { state.takenOutlook = false; throw new Error('kan koppeling niet opslaan — draai migratie-taak-outlook.sql'); }
+  t.outlook_id = id; t.outlook_sync = sig;
+}
 // Klik op een taak in het rooster → vergroot venstertje met de hele tekst en acties
 function toonTaakDetail(blok, t){
   document.querySelector('.tr-detail')?.remove();
@@ -2382,7 +2496,10 @@ function renderWeek(){
       <button class="calnav" id="wk_prev">‹</button>
       <button class="calnav" id="wk_nu">Vandaag</button>
       <button class="calnav" id="wk_next">›</button>
-      <span style="font-size:11.5px;color:var(--muted)">${wkLabel?wkLabel+' · ':''}klik op een dag om die te plannen</span>
+      <span style="font-size:11.5px;color:var(--muted)">${wkLabel?wkLabel+' · ':''}klik op een tijdstip om een taak te plannen</span>
+      <span style="margin-left:auto;display:flex;gap:6px">${olAan()
+        ? `<button class="calnav" id="ol_sync" title="Taken nu naar je Teams-agenda sturen">🔗 Teams-agenda ↻</button><button class="calnav" id="ol_uit" title="Koppeling uitzetten">✕</button>`
+        : `<button class="calnav" id="ol_aan" title="Zet je taken ook in je Outlook/Teams-agenda">🔗 Teams-agenda koppelen</button>`}</span>
     </div>
     ${tijdroosterHtml(agendaDagen, today)}
   </div>
@@ -2398,6 +2515,9 @@ function renderWeek(){
   </div>`;
   sleepTaken(el);
   klikNieuweTaak(el);
+  el.querySelector('#ol_aan')?.addEventListener('click', teamsKoppelen);
+  el.querySelector('#ol_sync')?.addEventListener('click', ()=>teamsSync(true));
+  el.querySelector('#ol_uit')?.addEventListener('click', teamsOntkoppelen);
   el.querySelectorAll('[data-open]').forEach(r=>r.onclick=(e)=>{ e.stopPropagation(); openEdit(r.dataset.open); });
   el.querySelectorAll('[data-goto]').forEach(r=>r.onclick=()=>{ view=r.dataset.goto; localStorage.setItem('mkt_view',view); render(); });
   el.querySelectorAll('[data-tgl]').forEach(c=>c.onclick=(e)=>{ e.stopPropagation(); toggleTaak(c.dataset.tgl, c.checked); });
