@@ -86,9 +86,10 @@ nav.fases{background:#20301a;border-bottom:1px solid #33421f;padding:0 18px;disp
 .tr-body{position:relative;padding:8px 0}
 .tr-uren{position:sticky;left:0;z-index:3;background:var(--card);border-right:1px solid var(--line)}
 .tr-hoek{position:sticky;left:0;z-index:3;background:var(--card)}
-.tr-uur{position:absolute;right:6px;transform:translateY(-50%);font-size:10.5px;color:var(--muted);font-variant-numeric:tabular-nums}
-.tr-dag{position:relative;border-left:1px solid #e6e9db;
-  background-image:repeating-linear-gradient(to bottom,transparent 0,transparent calc(44px - 1px),#e8ebdd calc(44px - 1px),#e8ebdd 44px)}
+.tr-uur{position:absolute;left:0;right:0;text-align:center;padding-top:6px;font-size:15px;color:#6b6f63;font-variant-numeric:tabular-nums;border-top:1px solid #e3e6d9;height:56px;box-sizing:border-box}
+.tr-lijn{position:absolute;left:0;right:0;border-top:1px solid #e3e6d9;pointer-events:none}
+.tr-lijn.half{border-top:1px dashed #cfd4c0}
+.tr-dag{position:relative;border-left:1px solid #e6e9db}
 .tr-dag.today{background-color:#fffbe6}
 .tr-blok{position:absolute;border-radius:6px;padding:2px 5px;font-size:11px;line-height:1.3;overflow:hidden;box-sizing:border-box;cursor:default}
 .tr-blok b{font-weight:800;font-variant-numeric:tabular-nums}
@@ -2176,7 +2177,8 @@ function dagplanningHtml(dagen){
   </div>`;
 }
 // ── Weekagenda als tijdrooster: uren 1–24 links, per dag de blokken op hun tijd (Bryan, 19 okt 2026) ──
-const UUR_PX = 44;            // hoogte van één uur
+const UUR_PX = 56;            // hoogte van één uur
+const STAP = 30;              // klikken en slepen per half uur (Bryan, 19 okt 2026)
 const ROOSTER = [8, 18];      // rooster loopt van 08:00 t/m 18:00 (Bryan, 19 okt 2026)
 const rY = m => (m - ROOSTER[0]*60) / 60 * UUR_PX;   // minuten → pixels vanaf de bovenkant
 function tijdroosterHtml(dagen, today){
@@ -2214,8 +2216,9 @@ function tijdroosterHtml(dagen, today){
       return `top:${rY(van)}px;height:${Math.max(18,(tot-van)/60*UUR_PX-2)}px;left:calc(${b.baan*100/b.nBanen}% + 2px);width:calc(${100/b.nBanen}% - 4px)`; };
     const lunch = ind.blokken.filter(b=>b.soort==='lunch').map(b=>`<div class="tr-lunch" style="top:${rY(b.van)}px;height:${(b.tot-b.van)/60*UUR_PX}px">🥪 lunch</div>`).join('');
     const nu = new Date(), nuMin = nu.getHours()*60+nu.getMinutes();
+    const lijnen = Array.from({length:(ROOSTER[1]-ROOSTER[0])*2}, (_,i)=>`<div class="tr-lijn${i%2?' half':''}" style="top:${i*UUR_PX/2}px"></div>`).join('');
     return `<div class="tr-dag${d===today?' today':''}${vrij?' vrij':''}" data-trdag="${d}" style="height:${(ROOSTER[1]-ROOSTER[0])*UUR_PX}px">
-      ${lunch}
+      ${lijnen}${lunch}
       ${blokken.map(b=>{
         if (b.soort==='afspraak') return `<div class="tr-blok tr-afspraak${b.a.k==='dagstart'?' ds':''}" data-afspraak="${b.a.k}" data-dag="${d}" style="${pos(b)}" title="${esc(b.a.txt)}"><b>${b.a.van}</b> ${b.a.ico} ${esc(b.a.titel)}</div>`;
         const t = b.t, g = gebied(t.gebied);
@@ -2225,7 +2228,7 @@ function tijdroosterHtml(dagen, today){
       ${d===today && nuMin>=ROOSTER[0]*60 && nuMin<=ROOSTER[1]*60 ? `<div class="tr-nu" style="top:${rY(nuMin)}px"></div>` : ''}
     </div>`;
   }).join('');
-  const uren = Array.from({length:ROOSTER[1]-ROOSTER[0]+1}, (_,i)=>ROOSTER[0]+i).map(h=>`<div class="tr-uur" style="top:${rY(h*60)}px">${String(h).padStart(2,'0')}:00</div>`).join('');
+  const uren = Array.from({length:ROOSTER[1]-ROOSTER[0]}, (_,i)=>ROOSTER[0]+i).map(h=>`<div class="tr-uur" style="top:${rY(h*60)}px">${h}</div>`).join('');
   return `<div class="tr" style="--n:${dagen.length}">
     <div class="tr-rij tr-koprij"><div class="tr-hoek"></div>${kop}</div>
     <div class="tr-body" id="tr_body">
@@ -2243,7 +2246,7 @@ function klikNieuweTaak(el){
       if (e.target.closest('.tr-blok, .tr-nieuw') || Date.now() - _sleepEind < 400) return;
       el.querySelector('.tr-nieuw')?.remove();
       const y = e.clientY - kol.getBoundingClientRect().top;
-      const min = Math.max(ROOSTER[0]*60, Math.min(ROOSTER[1]*60 - 15, Math.floor((ROOSTER[0]*60 + y/UUR_PX*60) / 15) * 15));
+      const min = Math.max(ROOSTER[0]*60, Math.min(ROOSTER[1]*60 - STAP, Math.floor((ROOSTER[0]*60 + y/UUR_PX*60) / STAP) * STAP));
       const datum = kol.dataset.trdag, tijd = tStr(min);
       let gb = dsGebied;
       const v2 = state.takenV2 !== false;
@@ -2293,7 +2296,7 @@ function sleepTaken(el){
         if (blok.parentElement !== kol) { kol.appendChild(blok); blok.style.left = '2px'; blok.style.width = 'calc(100% - 4px)'; }
         const y = ev.clientY - kol.getBoundingClientRect().top - start.grabY;
         const duur = t.duur_min || 60;
-        let min = Math.round((ROOSTER[0]*60 + y/UUR_PX*60) / 15) * 15;
+        let min = Math.round((ROOSTER[0]*60 + y/UUR_PX*60) / STAP) * STAP;
         min = Math.max(ROOSTER[0]*60, Math.min(ROOSTER[1]*60 - Math.min(duur, 60), min));
         blok.style.top = rY(min) + 'px';
         if (tijdLabel) tijdLabel.textContent = tStr(min);
