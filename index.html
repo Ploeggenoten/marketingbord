@@ -69,6 +69,30 @@ nav.fases{background:#20301a;border-bottom:1px solid #33421f;padding:0 18px;disp
 .taakadd input[type=text]{flex:1;min-width:180px;padding:8px 10px;border:1px solid var(--line);border-radius:9px;font:inherit;font-size:13px}
 .taakadd input[type=date]{padding:7px 8px;border:1px solid var(--line);border-radius:9px;font:inherit;font-size:12.5px}
 .planrow.taakklaar{opacity:.6}
+/* Taakgebieden + weekbalans */
+.taakrow{border-left:3px solid var(--gc,#c0c7ad);padding-left:6px}
+/* smalle dagkolommen: tekst krijgt de hele regel, chipjes eronder */
+.dagkaart .taakrow{flex-wrap:wrap;row-gap:3px;align-items:flex-start}
+.dagkaart .taakrow input[type=checkbox]{margin:1px 0 0}
+.dagkaart .taakrow .tt{flex:1 1 calc(100% - 30px);font-size:12px}
+.dagkaart .taakrow .gchip{margin-left:22px}
+.gchip{border:none;border-radius:999px;font-size:10.5px;font-weight:700;padding:1px 7px;cursor:pointer;color:#fff;background:var(--gc,#8a917c);flex:none;white-space:nowrap}
+.dchip{border:1px solid var(--line);background:#fff;border-radius:999px;font-size:10.5px;font-weight:600;padding:1px 6px;cursor:pointer;color:var(--muted);flex:none;white-space:nowrap}
+.gkeuze{display:flex;gap:5px;flex-wrap:wrap;width:100%}
+.gkeuze .kchip{padding:5px 11px;font-size:12px}
+.taakadd select{padding:7px 8px;border:1px solid var(--line);border-radius:9px;font:inherit;font-size:12.5px;background:#fff}
+.dk-uren{font-size:10.5px;color:var(--muted);font-weight:600}
+.dk-uren.vol{color:var(--red)}
+.balans-tot{display:flex;height:14px;border-radius:999px;overflow:hidden;background:#eef1e6;margin:4px 0 12px}
+.balans-tot div{height:100%;background:var(--gc)}
+.balansrij{display:grid;grid-template-columns:150px 1fr 90px;gap:10px;align-items:center;font-size:12.5px;padding:4px 0}
+.balansrij .bnaam{font-weight:700;display:flex;gap:6px;align-items:center}
+.balansrij .bnaam i{width:10px;height:10px;border-radius:3px;background:var(--gc);flex:none}
+.balansrij .bbar{height:9px;background:#eef1e6;border-radius:999px;overflow:hidden;position:relative}
+.balansrij .bbar div{position:absolute;inset:0 auto 0 0;background:var(--gc);opacity:.35}
+.balansrij .bbar div.af{opacity:1}
+.balansrij .buren{text-align:right;color:var(--muted);font-variant-numeric:tabular-nums}
+@media (max-width:560px){ .balansrij{grid-template-columns:110px 1fr 70px} }
 @media (max-width:980px){ .weekgrid7{grid-template-columns:repeat(2,1fr)} .dagkaart{min-height:0} }
 @media (max-width:560px){ .weekgrid7{grid-template-columns:1fr} }
 .inspkaart .it2{font-weight:600;font-size:13.5px;line-height:1.3}
@@ -495,7 +519,7 @@ const FASES = [
   {k:'Gepubliceerd',  c:'#3d9968'},
   {k:'Learnings',     c:'#4a9d9d'},
 ];
-const state = { posts: [], kanalen: [], vacs: [], cands: [], fees: null, meta: null, besluiten: [], taken: null };
+const state = { posts: [], kanalen: [], vacs: [], cands: [], fees: null, meta: null, besluiten: [], taken: null, takenV2: true };
 const VIEWS = ['week','prestatie','creatie','planning'];
 let view = localStorage.getItem('mkt_view') || 'prestatie';
 if (!VIEWS.includes(view)) view = {bord:'creatie', kalender:'planning', inzichten:'prestatie'}[view] || 'prestatie';
@@ -558,6 +582,8 @@ async function loadFromDB(){
   // Taken voor de weekplanner (tabel kan nog ontbreken → null = setup-kaart tonen)
   const tR = await sb.from('mkt_taken').select('*').order('datum').order('created_at');
   state.taken = tR.error ? null : (tR.data||[]);
+  // Taakgebied/duur bestaan pas na migratie-taakgebieden.sql (lege tabel: aannemen dat het er is; addTaak vangt het op)
+  if (state.taken?.length) state.takenV2 = 'gebied' in state.taken[0];
 }
 async function upsertPost(p){
   const row = { ...postToRow(p), updated_by: currentUser?.id, updated_at: new Date().toISOString() };
@@ -1629,11 +1655,38 @@ function autoTakenVandaag(){
   });
   return items;
 }
-async function addTaak(tekst, datum){
+// Taakgebieden voor de weekbalans (Bryan, 19 okt 2026). Volgorde = cyclus bij klikken op het chipje.
+const GEBIEDEN = [
+  { k:'content', n:'Content & social',    kort:'Content',  c:'#6fa03c' },
+  { k:'ads',     n:'Advertenties (Meta)', kort:'Ads',      c:'#2f6fb0' },
+  { k:'werving', n:'Vacatures & werving', kort:'Werving',  c:'#c27a1a' },
+  { k:'web',     n:'Website & SEO',       kort:'Web',      c:'#7a4fa3' },
+  { k:'overig',  n:'Overig & overleg',    kort:'Overig',   c:'#8a917c' },
+];
+const gebied = k => GEBIEDEN.find(g=>g.k===k) || GEBIEDEN[GEBIEDEN.length-1];
+const DUREN = [15,30,60,90,120,180,240];
+const WEEK_UREN = 32;      // 32 uur, 4 dagen
+const DAG_UREN = 8;
+const fmtDuur = m => m<60 ? `${m}m` : (m%60 ? `${String(m/60).replace('.',',')}u` : `${m/60}u`);
+const fmtUren = m => (Math.round(m/60*10)/10).toString().replace('.',',');
+let nieuwGebied = 'content';
+async function addTaak(tekst, datum, gb, duur){
   if (!tekst.trim()) return;
-  const { error } = await sb.from('mkt_taken').insert({ tekst:tekst.trim(), datum: datum||todayISO(), door: currentProfile?.naam||'' });
+  const basis = { tekst:tekst.trim(), datum: datum||todayISO(), door: currentProfile?.naam||'' };
+  let { error } = await sb.from('mkt_taken').insert({ ...basis, gebied: gb||'overig', duur_min: duur||60 });
+  if (error && state.takenV2 !== false) {
+    // kolommen bestaan nog niet → zonder gebied/duur opslaan, zodat de taak niet verloren gaat
+    ({ error } = await sb.from('mkt_taken').insert(basis));
+    if (!error) { state.takenV2 = false; toast('Taak opgeslagen — taakgebied en tijd werken pas na migratie-taakgebieden.sql'); }
+  }
   if (error) { toast('Opslaan mislukt — is de taken-migratie al gedraaid?'); return; }
   await loadFromDB(); render();
+}
+async function updTaak(id, patch){
+  const { error } = await sb.from('mkt_taken').update(patch).eq('id', id);
+  if (error) { toast('Opslaan mislukt — is migratie-taakgebieden.sql al gedraaid?'); return; }
+  const t = (state.taken||[]).find(x=>x.id===id); if (t) Object.assign(t, patch);
+  render();
 }
 async function toggleTaak(id, klaar){
   await sb.from('mkt_taken').update({ klaar }).eq('id', id);
@@ -1646,11 +1699,37 @@ async function delTaak(id){
   render();
 }
 function taakRij(t){
-  return `<div class="taakrow${t.klaar?' klaar':''}">
+  const g = gebied(t.gebied);
+  const v2 = 'gebied' in t;
+  return `<div class="taakrow${t.klaar?' klaar':''}" style="--gc:${g.c}">
     <input type="checkbox" data-tgl="${t.id}" ${t.klaar?'checked':''}>
     <span class="tt">${esc(t.tekst)}</span>
+    ${v2?`<button class="gchip" data-tgeb="${t.id}" title="${esc(g.n)} — klik om het taakgebied te wisselen">${esc(g.kort)}</button>
+    <button class="dchip" data-tduur="${t.id}" title="Geschatte tijd — klik om te wijzigen">${fmtDuur(t.duur_min||60)}</button>`:''}
     <button class="tdel" data-tdel="${t.id}" title="verwijderen">✕</button>
   </div>`;
+}
+// Uren per taakgebied voor een reeks dagen (alleen eigen taken; posts en auto-taken tellen niet mee)
+function weekBalansHtml(dagen){
+  const taken = (state.taken||[]).filter(t=>dagen.includes(t.datum));
+  const per = GEBIEDEN.map(g=>{
+    const ts = taken.filter(t=>gebied(t.gebied).k===g.k);
+    return { g, gepland: ts.reduce((s,t)=>s+(t.duur_min||60),0), af: ts.filter(t=>t.klaar).reduce((s,t)=>s+(t.duur_min||60),0), n: ts.length };
+  });
+  const totaal = per.reduce((s,p)=>s+p.gepland,0);
+  const totaalAf = per.reduce((s,p)=>s+p.af,0);
+  const cap = WEEK_UREN*60;
+  const max = Math.max(cap, totaal);
+  const over = totaal - cap;
+  const kop = `<b>${fmtUren(totaal)} van ${WEEK_UREN} uur gepland</b> · ${fmtUren(totaalAf)} uur afgerond${over>0?` · <span style="color:var(--red);font-weight:700">${fmtUren(over)} uur te veel — schuif iets door</span>`:` · ${fmtUren(cap-totaal)} uur nog vrij`}`;
+  return `<div style="font-size:13px">${kop}</div>
+    <div class="balans-tot" title="Gepland per taakgebied (grijs vlak = nog vrij)">${per.filter(p=>p.gepland).map(p=>`<div style="--gc:${p.g.c};width:${p.gepland/max*100}%" title="${esc(p.g.n)}: ${fmtUren(p.gepland)} uur"></div>`).join('')}</div>
+    ${per.map(p=>`<div class="balansrij" style="--gc:${p.g.c}">
+      <span class="bnaam"><i></i>${esc(p.g.n)}</span>
+      <span class="bbar"><div style="width:${totaal?p.gepland/totaal*100:0}%"></div><div class="af" style="width:${totaal?p.af/totaal*100:0}%"></div></span>
+      <span class="buren">${p.n?`${fmtUren(p.gepland)} u · ${totaal?Math.round(p.gepland/totaal*100):0}%`:'—'}</span>
+    </div>`).join('')}
+    <div class="toel" style="margin:8px 0 0;font-size:11.5px">Telt je eigen taken met hun geschatte tijd. Licht = gepland, donker = afgerond. Klik op het gekleurde chipje van een taak om het gebied te wisselen, op de tijd om die aan te passen.</div>`;
 }
 function renderWeek(){
   const el = document.getElementById('week');
@@ -1667,12 +1746,10 @@ function renderWeek(){
     ${auto.map(i=>`<div class="planrow${i.rood?' gemist':''}${i.done?' taakklaar':''}" ${i.open?`data-open="${i.open}"`:''} ${i.goto?`data-goto="${i.goto}"`:''} style="cursor:pointer"><span>${i.ico}</span><span class="pt">${i.txt}</span></div>`).join('')}
     ${(T||[]).filter(t=>t.datum===today).map(taakRij).join('')}
     ${openOud.length?`<div style="margin-top:8px;font-size:12px;font-weight:700;color:#a33">⏰ Blijven liggen van eerder:</div>${openOud.map(taakRij).join('')}`:''}
-    <div class="taakadd">
-      <input type="text" id="tk_tekst" placeholder="Eigen taak toevoegen… (bijv. filmdag De Gier voorbereiden)">
-      <input type="date" id="tk_datum" value="${today}">
-      <button class="qbtn" id="tk_add">＋ toevoegen</button>
-    </div>
   </div>`:''}
+  <div class="inzbox"><h4>⚖️ Weekbalans ${weekOffset===0?'— deze week':weekOffset===1?'— volgende week':`(${fmtD(dagen[0])} – ${fmtD(dagen[6])})`}</h4>
+    ${state.takenV2===false ? `<div class="advies rood" style="margin:0"><b>⚙️ Eén keer instellen</b>Voor taakgebieden en tijd moet <b>supabase/migratie-taakgebieden.sql</b> (uit de repo) in de Supabase SQL Editor gedraaid worden. Je taken blijven gewoon werken.</div>` : weekBalansHtml(dagen)}
+  </div>
   <div class="inzbox"><h4 style="display:flex;justify-content:space-between;align-items:center"><span>📋 Weekplanning ${weekOffset===0?'— deze week':weekOffset===1?'— volgende week':`(${fmtD(dagen[0])} – ${fmtD(dagen[6])})`}</span>
     <span style="display:flex;gap:6px"><button class="qbtn" id="wk_prev">‹</button><button class="qbtn" id="wk_nu">vandaag</button><button class="qbtn" id="wk_next">›</button></span></h4>
     <div class="weekgrid7">
@@ -1680,8 +1757,10 @@ function renderWeek(){
         const dt = new Date(d+'T12:00:00'); const dow = dt.getDay();
         const posts = state.posts.filter(p=>p.datum===d && (p.fase==='Ingepland'||PUB(p)));
         const taken = (T||[]).filter(t=>t.datum===d);
+        const min = taken.reduce((s,t)=>s+(t.duur_min||0),0);
         return `<div class="dagkaart${d===today?' vandaag':''}">
           <div class="dk-kop">${DAGNAMEN[dow]} <span>${fmtD(d).slice(0,5)}</span></div>
+          ${min?`<div class="dk-uren${min>DAG_UREN*60?' vol':''}">${fmtUren(min)} / ${DAG_UREN} uur gepland</div>`:''}
           <div class="dk-thema">📅 ${esc((wkTh[dow]||'').split('—')[0].trim())}</div>
           ${posts.map(p=>`<div class="dk-post${PUB(p)?' pub':''}" data-open="${p.id}">${PUB(p)?'✅':'📤'} ${esc(p.titel.slice(0,34))}</div>`).join('')}
           ${WEEKRITME[dow]?`<div class="dk-ritme">${esc(WEEKRITME[dow])}</div>`:''}
@@ -1689,6 +1768,13 @@ function renderWeek(){
           <button class="dk-add" data-dagadd="${d}">＋ taak</button>
         </div>`;
       }).join('')}
+    </div>
+    <div class="taakadd" id="tk_form">
+      ${state.takenV2!==false?`<div class="gkeuze">${GEBIEDEN.map(g=>`<button class="kchip${g.k===nieuwGebied?' on':''}" data-ngeb="${g.k}" style="--kc:${g.c}">${esc(g.n)}</button>`).join('')}</div>`:''}
+      <input type="text" id="tk_tekst" placeholder="Taak toevoegen… (bijv. filmdag De Gier voorbereiden)">
+      <input type="date" id="tk_datum" value="${weekOffset===0?today:dagen[0]}">
+      ${state.takenV2!==false?`<select id="tk_duur" title="Geschatte tijd">${DUREN.map(m=>`<option value="${m}"${m===60?' selected':''}>${fmtDuur(m)}</option>`).join('')}</select>`:''}
+      <button class="qbtn" id="tk_add">＋ toevoegen</button>
     </div>
   </div>`;
   el.querySelectorAll('[data-open]').forEach(r=>r.onclick=()=>openEdit(r.dataset.open));
@@ -1700,13 +1786,32 @@ function renderWeek(){
   el.querySelector('#wk_nu').onclick = ()=>{ weekOffset=0; render(); };
   const addBtn = el.querySelector('#tk_add');
   if (addBtn) {
-    const doe = ()=>{ addTaak(document.getElementById('tk_tekst').value, document.getElementById('tk_datum').value); };
+    const doe = ()=>{ addTaak(document.getElementById('tk_tekst').value, document.getElementById('tk_datum').value,
+      nieuwGebied, Number(document.getElementById('tk_duur')?.value)||60); };
     addBtn.onclick = doe;
     el.querySelector('#tk_tekst').addEventListener('keydown', e=>{ if(e.key==='Enter') doe(); });
   }
+  el.querySelectorAll('[data-ngeb]').forEach(b=>b.onclick=()=>{
+    nieuwGebied = b.dataset.ngeb;
+    el.querySelectorAll('[data-ngeb]').forEach(x=>x.classList.toggle('on', x===b));
+  });
+  // ＋ taak op een dag → formulier onderaan op die dag zetten (met gebied en tijd erbij)
   el.querySelectorAll('[data-dagadd]').forEach(b=>b.onclick=()=>{
-    const tekst = window.prompt(`Taak voor ${fmtD(b.dataset.dagadd)}:`);
-    if (tekst) addTaak(tekst, b.dataset.dagadd);
+    document.getElementById('tk_datum').value = b.dataset.dagadd;
+    document.getElementById('tk_form').scrollIntoView({ behavior:'smooth', block:'center' });
+    document.getElementById('tk_tekst').focus({ preventScroll:true });
+  });
+  el.querySelectorAll('[data-tgeb]').forEach(b=>b.onclick=(e)=>{
+    e.stopPropagation();
+    const t = state.taken.find(x=>x.id===b.dataset.tgeb);
+    const i = GEBIEDEN.findIndex(g=>g.k===gebied(t.gebied).k);
+    updTaak(t.id, { gebied: GEBIEDEN[(i+1)%GEBIEDEN.length].k });
+  });
+  el.querySelectorAll('[data-tduur]').forEach(b=>b.onclick=(e)=>{
+    e.stopPropagation();
+    const t = state.taken.find(x=>x.id===b.dataset.tduur);
+    const i = DUREN.indexOf(t.duur_min||60);
+    updTaak(t.id, { duur_min: DUREN[(i+1)%DUREN.length] });
   });
 }
 
