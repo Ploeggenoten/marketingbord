@@ -1819,7 +1819,7 @@ const DUREN = [15,30,60,90,120,180,240];
 const WEEK_UREN = 32;      // 32 uur, 4 dagen
 const VRIJE_DAGEN = [4];   // getDay(): donderdag vrij
 const WERKDAGEN = [1,2,3,5];
-const WERKTIJD = { van:'08:30', tot:'17:00', lunch:['12:30','13:00'] };
+const WERKTIJD = { van:'08:30', tot:'17:00', lunch:['12:00','12:30'] };
 const DAG_UREN = 8;
 const fmtDuur = m => m<60 ? `${m}m` : (m%60 ? `${String(m/60).replace('.',',')}u` : `${m/60}u`);
 const fmtUren = m => (Math.round(m/60*10)/10).toString().replace('.',',');
