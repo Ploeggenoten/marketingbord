@@ -112,6 +112,14 @@ nav.fases{background:#20301a;border-bottom:1px solid #33421f;padding:0 18px;disp
 .tr-nieuw-knoppen{display:flex;gap:6px;align-items:center}
 .tr-nieuw-knoppen select{padding:5px 6px;border:1px solid var(--line);border-radius:7px;font:inherit;font-size:12px;background:#fff}
 .tr-nieuw-ok{padding:6px 12px !important;font-size:12.5px !important}
+.tr-detail{position:absolute;left:2px;z-index:7;width:290px;max-width:calc(100vw - 40px);background:#fff;border:1px solid var(--line);border-left:5px solid var(--gc);border-radius:10px;padding:9px 10px;box-shadow:0 10px 28px rgba(0,0,0,.22);display:flex;flex-direction:column;gap:7px;cursor:default}
+.tr-dag:nth-last-child(-n+2) .tr-detail{left:auto;right:2px}
+.tr-detail-kop{display:flex;justify-content:space-between;align-items:center;font-size:11.5px;font-weight:800;color:var(--muted)}
+.tr-detail-tekst{border:1px solid var(--line);border-radius:7px;padding:7px 9px;font:inherit;font-size:13.5px;line-height:1.4;resize:vertical;min-height:52px}
+.tr-detail-info{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+.tr-detail-info .gchip{cursor:default}
+.tr-detail-knoppen{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+.tr-taak{cursor:pointer}
 .tr-nu{position:absolute;left:0;right:0;height:2px;background:var(--red);z-index:2}
 .tr-nu::before{content:'';position:absolute;left:-4px;top:-3px;width:8px;height:8px;border-radius:50%;background:var(--red)}
 /* Dagplanning + dagafsluiting */
@@ -2243,7 +2251,7 @@ let _sleepEind = 0;
 function klikNieuweTaak(el){
   el.querySelectorAll('.tr-dag[data-trdag]').forEach(kol=>{
     kol.onclick = e=>{
-      if (e.target.closest('.tr-blok, .tr-nieuw') || Date.now() - _sleepEind < 400) return;
+      if (e.target.closest('.tr-blok, .tr-nieuw, .tr-detail') || Date.now() - _sleepEind < 400) return;
       el.querySelector('.tr-nieuw')?.remove();
       const y = e.clientY - kol.getBoundingClientRect().top;
       const min = Math.max(ROOSTER[0]*60, Math.min(ROOSTER[1]*60 - STAP, Math.floor((ROOSTER[0]*60 + y/UUR_PX*60) / STAP) * STAP));
@@ -2280,6 +2288,39 @@ function klikNieuweTaak(el){
     };
   });
 }
+// Klik op een taak in het rooster → vergroot venstertje met de hele tekst en acties
+function toonTaakDetail(blok, t){
+  document.querySelector('.tr-detail')?.remove();
+  const kol = blok.parentElement, g = gebied(t.gebied);
+  const ind = dagIndeling(t.datum), b = ind.blokken.find(x=>x.t?.id===t.id);
+  const naar = volgendeWerkdag(t.datum);
+  const vak = document.createElement('div');
+  vak.className = 'tr-detail';
+  vak.style.top = blok.style.top;
+  vak.style.setProperty('--gc', g.c);
+  vak.innerHTML = `<div class="tr-detail-kop"><span>${dagLabel(t.datum)}${b?` · ${tStr(b.van)}–${tStr(b.tot)}`:''}${t.tijd?' · vaste tijd':''}</span><button class="qbtn" data-dx="sluit" title="Sluiten (Esc)">✕</button></div>
+    <textarea class="tr-detail-tekst" rows="3">${esc(t.tekst)}</textarea>
+    <div class="tr-detail-info"><span class="gchip" style="--gc:${g.c}">${esc(g.n)}</span><span class="dchip">${fmtDuur(t.duur_min||60)}</span>${t.klaar?'<span class="dchip" style="color:var(--green)">✓ afgerond</span>':''}</div>
+    <div class="tr-detail-knoppen">
+      <button class="bigbtn" data-dx="opslaan" style="padding:6px 11px;font-size:12px">Opslaan</button>
+      <button class="qbtn" data-dx="klaar">${t.klaar?'↺ Niet afgerond':'✓ Afvinken'}</button>
+      ${t.klaar?'':`<button class="qbtn" data-dx="door">→ ${DAGNAMEN[new Date(naar+'T12:00:00').getDay()]}</button>`}
+      <button class="qbtn" data-dx="weg" style="color:var(--red)">Verwijderen</button>
+    </div>`;
+  kol.appendChild(vak);
+  const ta = vak.querySelector('textarea');
+  ta.style.height = Math.min(220, ta.scrollHeight + 4) + 'px';
+  vak.onclick = e=>e.stopPropagation();
+  vak.onpointerdown = e=>e.stopPropagation();
+  vak.querySelector('[data-dx="sluit"]').onclick = ()=>vak.remove();
+  vak.querySelector('[data-dx="opslaan"]').onclick = async ()=>{ const tekst = ta.value.trim(); vak.remove(); if (tekst && tekst!==t.tekst) await updTaak(t.id, { tekst }); };
+  vak.querySelector('[data-dx="klaar"]').onclick = ()=>{ vak.remove(); toggleTaak(t.id, !t.klaar); };
+  vak.querySelector('[data-dx="door"]')?.addEventListener('click', ()=>{ vak.remove(); schuifDoor([t.id], naar); });
+  vak.querySelector('[data-dx="weg"]').onclick = ()=>{ if (confirm(`"${t.tekst}" verwijderen?`)) { vak.remove(); delTaak(t.id); } };
+  ta.onkeydown = e=>{ if (e.key==='Escape') vak.remove(); };
+  const sluitBuiten = e=>{ if (!vak.contains(e.target)) { vak.remove(); document.removeEventListener('pointerdown', sluitBuiten, true); } };
+  setTimeout(()=>document.addEventListener('pointerdown', sluitBuiten, true), 0);
+}
 function sleepTaken(el){
   el.querySelectorAll('.tr-taak[data-tid]').forEach(blok=>{
     blok.onpointerdown = e=>{
@@ -2305,7 +2346,8 @@ function sleepTaken(el){
       const los = async ()=>{
         document.removeEventListener('pointermove', beweeg);
         document.removeEventListener('pointerup', los);
-        if (!gesleept || !doel) return;
+        if (!gesleept) { toonTaakDetail(blok, t); return; }
+        if (!doel) return;
         _sleepEind = Date.now();
         blok.classList.remove('sleept');
         if (state.takenTijd === false) { toast('Verslepen naar een tijd werkt pas na migratie-taaktijd.sql in Supabase'); render(); return; }
