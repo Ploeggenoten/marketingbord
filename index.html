@@ -1509,11 +1509,11 @@ async function composerSave(inplannen){
   if (!kanaal) { toast('Kies een platform (klik op een van de knoppen)'); return; }
   const kanalen = kanaal==='social' ? PLATFORMS[0].kanalen : [kanaal];
   let datum = document.getElementById('c_datum').value;
-  let tijd = document.getElementById('c_tijd').value;
+  // Contentplanning werkt per dag, zonder tijd (Bryan, 19 okt 2026): je post hem zelf op die dag.
+  const tijd = '';
   let fase = 'Idee';
   if (inplannen) {
     if (!datum) datum = todayISO();
-    if (!tijd) { const d = new Date(Date.now()+3600e3); tijd = String(d.getHours()).padStart(2,'0')+':00'; }
     fase = 'Ingepland';
   }
   const titel = tekst ? (tekst.split('\n')[0].split(/\s+/).slice(0,7).join(' ').slice(0,60)) : ('Post ' + fmtD(datum||todayISO()));
@@ -1522,20 +1522,15 @@ async function composerSave(inplannen){
     titel, kanaal:kan, format: _comp.media ? (/\.(mp4|mov|m4v|webm)/i.test(_comp.media)?'Reel / video':'Foto + tekst') : 'Tekstpost',
     doel:'Kandidaten werven', fase, campagne:'', vacature:_comp.vacature, utm:'', hook:tekst.split('\n')[0].slice(0,120), script:tekst,
     datum: inplannen?datum:'', tijd: inplannen?tijd:'', link:'', mediaUrl:_comp.media,
-    // Zonder foto/video is het een tekstplan ("wat moet er geüpload worden") → niet automatisch publiceren
-    autoPublish: inplannen && !!_comp.media && ['Facebook','Instagram'].includes(kan), publiceerLog:'',
+    // Geen tijd → niet automatisch publiceren (de publisher zou dan direct na middernacht posten).
+    // Automatisch posten kan nog per post via "alle opties…" met een tijd erbij.
+    autoPublish: false, publiceerLog:'',
     resultaat:{}, learnings:'', notities:[], createdAt:new Date().toISOString(), _updatedAt:new Date().toISOString() }));
   state.posts.push(...nieuw);
-  const _tekstplan = !_comp.media;
   _comp = { ..._comp, media:'', vacature:'', tekst:'', datum:'' };
   render();
   for (const p of nieuw) await upsertPost(p, false); // ze worden alle drie hier al opgeslagen
-  const auto = nieuw.filter(p=>p.autoPublish).map(p=>p.kanaal), zelf = nieuw.filter(p=>!p.autoPublish).map(p=>p.kanaal);
-  toast(inplannen
-    ? (_tekstplan
-        ? `📅 Ingepland voor ${fmtD(datum)} ${tijd} als tekstplan — zonder foto/video post je hem zelf`
-        : `🚀 Ingepland voor ${fmtD(datum)} ${tijd}${auto.length?` — automatisch live op ${auto.join(' + ')}`:''}${zelf.length?`${auto.length?';':' —'} ${zelf.join(' + ')} post je zelf`:''}`)
-    : '💾 Bewaard als idee');
+  toast(inplannen ? `📅 Ingepland voor ${dagLabel(datum)} op ${kanalen.join(' + ')}` : '💾 Bewaard als idee');
 }
 function composerVul(item){
   _comp.vacature = item.vacature || '';
@@ -1581,7 +1576,7 @@ function renderCreatie(){
       <span class="medianame" id="c_medianame">${_comp.media?'✓ media toegevoegd':''}</span>
       <input type="file" id="c_media" accept="image/*,video/mp4,video/quicktime" style="display:none">
       <span style="flex:1"></span>
-      <input type="date" id="c_datum" value="${_comp.datum||todayISO()}"> <input type="time" id="c_tijd">
+      <input type="date" id="c_datum" value="${_comp.datum||todayISO()}">
     </div>
     <div class="studiorow">
       <button class="bigbtn" id="c_plan">📅 Inplannen</button>
@@ -1695,13 +1690,13 @@ function renderPlanning(){
     const n = groepeer(weekPosts).length;
     return `<div class="pbaan-kop" style="--pc:${pl.c};--pb:${pl.bg}"><b>${pl.ico} ${esc(pl.n)}</b><span>${n} post${n===1?'':'s'} deze week</span></div>` +
       pdagen.map(d=>{
-        const groepen = groepeer(weekPosts.filter(p=>p.datum===d)).sort((a,b)=>(a[0].tijd||'').localeCompare(b[0].tijd||''));
+        const groepen = groepeer(weekPosts.filter(p=>p.datum===d)).sort((a,b)=>(a[0].titel||'').localeCompare(b[0].titel||''));
         return `<div class="pcel${d===today?' today':''}${d<today?' past':''}" data-pnew="${pl.k}|${d}" style="--pb:${pl.bg}" title="Klik om hier een post in te plannen">
           ${groepen.map(g=>{
             const p = g[0];
             const done = g.every(PUB), missed = g.some(x=>x.fase==='Ingepland' && d<today);
             return `<div class="ppost${done?' done':''}${missed?' missed':''}" data-open="${p.id}" style="--pc:${pl.c};--pct:${pl.tc}" title="${esc(p.titel)} · ${g.map(x=>x.kanaal+': '+x.fase).join(' · ')}">
-              ${p.tijd?`<b>${p.tijd.slice(0,5)}</b> `:''}${esc(p.titel)}
+              ${esc(p.titel)}
               ${pl.kanalen.length>1?`<span class="pkan">${pl.kanalen.map(k=>{ const x=g.find(y=>y.kanaal===k); return `<i class="${x?(PUB(x)?'pub':'aan'):'uit'}" title="${k}: ${x?x.fase:'niet ingepland'}">${KAN_AFK[k]}</i>`; }).join('')}</span>`:''}
             </div>`;
           }).join('') || '<span class="pleeg">＋</span>'}
