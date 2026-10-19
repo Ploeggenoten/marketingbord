@@ -1515,7 +1515,6 @@ async function composerSave(inplannen){
     if (!datum) datum = todayISO();
     if (!tijd) { const d = new Date(Date.now()+3600e3); tijd = String(d.getHours()).padStart(2,'0')+':00'; }
     fase = 'Ingepland';
-    if (kanalen.some(k=>['Instagram','TikTok'].includes(k)) && !_comp.media) { toast('Instagram en TikTok vereisen een foto of video'); return; }
   }
   const titel = tekst ? (tekst.split('\n')[0].split(/\s+/).slice(0,7).join(' ').slice(0,60)) : ('Post ' + fmtD(datum||todayISO()));
   const basisId = 'm'+Date.now()+Math.random().toString(36).slice(2,6);
@@ -1523,15 +1522,19 @@ async function composerSave(inplannen){
     titel, kanaal:kan, format: _comp.media ? (/\.(mp4|mov|m4v|webm)/i.test(_comp.media)?'Reel / video':'Foto + tekst') : 'Tekstpost',
     doel:'Kandidaten werven', fase, campagne:'', vacature:_comp.vacature, utm:'', hook:tekst.split('\n')[0].slice(0,120), script:tekst,
     datum: inplannen?datum:'', tijd: inplannen?tijd:'', link:'', mediaUrl:_comp.media,
-    autoPublish: inplannen && ['Facebook','Instagram'].includes(kan), publiceerLog:'',
+    // Zonder foto/video is het een tekstplan ("wat moet er geüpload worden") → niet automatisch publiceren
+    autoPublish: inplannen && !!_comp.media && ['Facebook','Instagram'].includes(kan), publiceerLog:'',
     resultaat:{}, learnings:'', notities:[], createdAt:new Date().toISOString(), _updatedAt:new Date().toISOString() }));
   state.posts.push(...nieuw);
+  const _tekstplan = !_comp.media;
   _comp = { ..._comp, media:'', vacature:'', tekst:'', datum:'' };
   render();
-  for (const p of nieuw) await upsertPost(p);
+  for (const p of nieuw) await upsertPost(p, false); // ze worden alle drie hier al opgeslagen
   const auto = nieuw.filter(p=>p.autoPublish).map(p=>p.kanaal), zelf = nieuw.filter(p=>!p.autoPublish).map(p=>p.kanaal);
   toast(inplannen
-    ? `🚀 Ingepland voor ${fmtD(datum)} ${tijd}${auto.length?` — automatisch live op ${auto.join(' + ')}`:''}${zelf.length?`${auto.length?';':' —'} ${zelf.join(' + ')} post je zelf`:''}`
+    ? (_tekstplan
+        ? `📅 Ingepland voor ${fmtD(datum)} ${tijd} als tekstplan — zonder foto/video post je hem zelf`
+        : `🚀 Ingepland voor ${fmtD(datum)} ${tijd}${auto.length?` — automatisch live op ${auto.join(' + ')}`:''}${zelf.length?`${auto.length?';':' —'} ${zelf.join(' + ')} post je zelf`:''}`)
     : '💾 Bewaard als idee');
 }
 function composerVul(item){
@@ -1581,7 +1584,7 @@ function renderCreatie(){
       <input type="date" id="c_datum" value="${_comp.datum||todayISO()}"> <input type="time" id="c_tijd">
     </div>
     <div class="studiorow">
-      <button class="bigbtn" id="c_plan">🚀 Inplannen & automatisch posten</button>
+      <button class="bigbtn" id="c_plan">📅 Inplannen</button>
       <button class="bigbtn sec" id="c_concept">💾 Bewaar als idee</button>
       <button class="qbtn" id="c_meer">alle opties…</button>
       <button class="qbtn" id="c_video">🎬 videoscript</button>
