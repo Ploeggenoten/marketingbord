@@ -149,7 +149,7 @@ nav.fases{background:#20301a;border-bottom:1px solid #33421f;padding:0 18px;disp
 .ds-ok{flex:none;font-size:11.5px;font-weight:700;color:var(--green)}
 /* Weekagenda bovenaan Mijn week (zelfde stijl als de kalender in Planning) */
 .wkagenda{margin-bottom:12px}
-.wkgrid{display:grid;grid-template-columns:repeat(7,minmax(0,1fr))}
+.wkgrid{display:grid;grid-template-columns:repeat(5,minmax(0,1fr))}
 .wkcell{min-height:200px;border-right:1px solid #e6e9db;border-bottom:1px solid #e6e9db;padding:8px 8px 10px;display:flex;flex-direction:column;gap:5px;cursor:pointer;min-width:0}
 .wkcell:last-child{border-right:none}
 .wkcell:hover{background:#f6f8ef}
@@ -2057,7 +2057,9 @@ function renderWeek(){
   const openOud = (T||[]).filter(t=>!t.klaar && t.datum<today && t.datum<dagen[0]);
   const auto = autoTakenVandaag();
   const wkLabel = weekOffset===0?'deze week':weekOffset===1?'volgende week':weekOffset===-1?'vorige week':'';
-  const d0 = new Date(dagen[0]+'T12:00:00'), d6 = new Date(dagen[6]+'T12:00:00');
+  // Agenda toont alleen ma t/m vr (weekend weg, Bryan 19 okt 2026)
+  const agendaDagen = dagen.filter(d=>![0,6].includes(new Date(d+'T12:00:00').getDay()));
+  const d0 = new Date(agendaDagen[0]+'T12:00:00'), d6 = new Date(agendaDagen[agendaDagen.length-1]+'T12:00:00');
   const wkTitel = `Week ${isoWeek(d0)} · ${d0.getDate()}${d0.getMonth()!==d6.getMonth()?' '+d0.toLocaleDateString('nl-NL',{month:'short'}):''} – ${d6.toLocaleDateString('nl-NL',{day:'numeric',month:'long'})}`;
   el.innerHTML = `
   ${setup}
@@ -2070,7 +2072,7 @@ function renderWeek(){
       <span style="font-size:11.5px;color:var(--muted)">${wkLabel?wkLabel+' · ':''}klik op een dag om die te plannen</span>
     </div>
     <div class="wkgrid">
-      ${dagen.map(d=>{
+      ${agendaDagen.map(d=>{
         const dt = new Date(d+'T12:00:00'); const dow = dt.getDay();
         const posts = state.posts.filter(p=>p.datum===d && (p.fase==='Ingepland'||PUB(p))).sort((a,b)=>(a.tijd||'').localeCompare(b.tijd||''));
         const taken = (T||[]).filter(t=>t.datum===d);
