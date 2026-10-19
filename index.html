@@ -81,12 +81,13 @@ nav.fases{background:#20301a;border-bottom:1px solid #33421f;padding:0 18px;disp
 .pdow{padding:7px 9px;font-size:11.5px;color:var(--muted);border-bottom:1px solid var(--line)}
 .pdow b{font-family:var(--disp);font-weight:400;font-size:14px;letter-spacing:.05em;text-transform:uppercase;color:var(--txt);margin-right:3px}
 .pdow.today{background:#e9f3ec}
-.pbaan-kop{padding:10px 12px;border-bottom:1px solid #e6e9db;border-left:4px solid var(--pc);display:flex;flex-direction:column;gap:3px;font-size:12.5px;background:#fbfcf8}
+.pbaan-kop{padding:10px 12px;border-bottom:1px solid #e6e9db;border-left:4px solid var(--pc);display:flex;flex-direction:column;gap:3px;font-size:12.5px;background:var(--pb,#fbfcf8)}
 .pbaan-kop span{font-size:11px;color:var(--muted)}
 .pcel{min-height:92px;border-bottom:1px solid #e6e9db;border-left:1px solid #e6e9db;padding:6px;display:flex;flex-direction:column;gap:5px;cursor:pointer;min-width:0}
-.pcel:hover{background:#f6f8ef}
-.pcel.today{background:#e9f3ec}
-.pcel.past{background:#f7f8f2}
+.pcel{background:var(--pb)}
+.pcel:hover{box-shadow:inset 0 0 0 2px var(--line)}
+.pcel.today{box-shadow:inset 0 3px 0 #2f8f5b}
+.pcel.past{filter:saturate(.55)}
 .pleeg{margin:auto;color:#c3cbab;font-size:18px;font-weight:300}
 .pcel:hover .pleeg{color:#6b7d43}
 .ppost{font-size:11.5px;line-height:1.35;background:#fff;border:1px solid var(--line);border-left:4px solid var(--pc);border-radius:7px;padding:5px 7px;overflow:hidden;overflow-wrap:anywhere}
@@ -94,7 +95,7 @@ nav.fases{background:#20301a;border-bottom:1px solid #33421f;padding:0 18px;disp
 .ppost.done{opacity:.6}.ppost.missed{outline:2px solid var(--red)}
 .pkan{display:flex;gap:3px;margin-top:4px}
 .pkan i{font-style:normal;font-size:9.5px;font-weight:800;border-radius:4px;padding:0 4px;background:#eef0e6;color:#b2b8a2}
-.pkan i.aan{background:var(--pc);color:#fff}
+.pkan i.aan{background:var(--pc);color:var(--pct,#fff)}
 .pkan i.pub{background:#2f8f5b;color:#fff}
 @media (max-width:760px){
   .pgrid{grid-template-columns:repeat(7,minmax(140px,1fr));overflow-x:auto}
@@ -577,8 +578,9 @@ function esc(s){ return String(s??'').replace(/[&<>"']/g, c=>({'&':'&amp;','<':'
 function kanaalKleur(naam){ const k = state.kanalen.find(x=>x.naam===naam); return k ? k.kleur : '#9aa3b2'; }
 // Twee platformen (Bryan, 19 okt 2026): Instagram-content gaat óók op Facebook en TikTok; LinkedIn is anders.
 const PLATFORMS = [
-  { k:'social',   n:'Instagram · Facebook · TikTok', ico:'📸', kanalen:['Instagram','Facebook','TikTok'], c:'#c13584' },
-  { k:'linkedin', n:'LinkedIn',                      ico:'💼', kanalen:['LinkedIn'],                       c:'#0a66c2' },
+  // c = accentkleur (randen/labels), tc = tekst op die kleur, bg = transparante baankleur
+  { k:'social',   n:'Instagram · Facebook · TikTok', ico:'📸', kanalen:['Instagram','Facebook','TikTok'], c:'#e3a800', tc:'#3a2c00', bg:'rgba(250,204,21,.16)' },
+  { k:'linkedin', n:'LinkedIn',                      ico:'💼', kanalen:['LinkedIn'],                       c:'#3aa0e8', tc:'#ffffff', bg:'rgba(80,175,240,.16)' },
 ];
 const platformVan = kan => PLATFORMS.find(p=>p.kanalen.includes(kan));
 const KAN_AFK = { Instagram:'IG', Facebook:'FB', TikTok:'TT', LinkedIn:'in' };
@@ -1668,14 +1670,14 @@ function renderPlanning(){
   const banen = PLATFORMS.map(pl=>{
     const weekPosts = P.filter(p=>pdagen.includes(p.datum) && pl.kanalen.includes(p.kanaal) && (p.fase==='Ingepland'||PUB(p)));
     const n = groepeer(weekPosts).length;
-    return `<div class="pbaan-kop" style="--pc:${pl.c}"><b>${pl.ico} ${esc(pl.n)}</b><span>${n} post${n===1?'':'s'} deze week</span></div>` +
+    return `<div class="pbaan-kop" style="--pc:${pl.c};--pb:${pl.bg}"><b>${pl.ico} ${esc(pl.n)}</b><span>${n} post${n===1?'':'s'} deze week</span></div>` +
       pdagen.map(d=>{
         const groepen = groepeer(weekPosts.filter(p=>p.datum===d)).sort((a,b)=>(a[0].tijd||'').localeCompare(b[0].tijd||''));
-        return `<div class="pcel${d===today?' today':''}${d<today?' past':''}" data-pnew="${pl.k}|${d}" title="Klik om hier een post in te plannen">
+        return `<div class="pcel${d===today?' today':''}${d<today?' past':''}" data-pnew="${pl.k}|${d}" style="--pb:${pl.bg}" title="Klik om hier een post in te plannen">
           ${groepen.map(g=>{
             const p = g[0];
             const done = g.every(PUB), missed = g.some(x=>x.fase==='Ingepland' && d<today);
-            return `<div class="ppost${done?' done':''}${missed?' missed':''}" data-open="${p.id}" style="--pc:${pl.c}" title="${esc(p.titel)} · ${g.map(x=>x.kanaal+': '+x.fase).join(' · ')}">
+            return `<div class="ppost${done?' done':''}${missed?' missed':''}" data-open="${p.id}" style="--pc:${pl.c};--pct:${pl.tc}" title="${esc(p.titel)} · ${g.map(x=>x.kanaal+': '+x.fase).join(' · ')}">
               ${p.tijd?`<b>${p.tijd.slice(0,5)}</b> `:''}${esc(p.titel)}
               ${pl.kanalen.length>1?`<span class="pkan">${pl.kanalen.map(k=>{ const x=g.find(y=>y.kanaal===k); return `<i class="${x?(PUB(x)?'pub':'aan'):'uit'}" title="${k}: ${x?x.fase:'niet ingepland'}">${KAN_AFK[k]}</i>`; }).join('')}</span>`:''}
             </div>`;
