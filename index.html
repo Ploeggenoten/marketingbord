@@ -101,6 +101,16 @@ nav.fases{background:#20301a;border-bottom:1px solid #33421f;padding:0 18px;disp
 .tr-taak.klaar{opacity:.55;text-decoration:line-through}
 .tr-taak input{width:12px;height:12px;margin:0 4px 0 0;vertical-align:-2px;accent-color:#6b9a2f;cursor:pointer}
 .tr-lunch{position:absolute;left:0;right:0;background:repeating-linear-gradient(135deg,#f3f4ee 0 6px,#eceee4 6px 12px);font-size:10px;color:var(--muted);padding:2px 6px;box-sizing:border-box}
+.tr-dag{cursor:copy}
+.tr-nieuw{position:absolute;left:2px;z-index:6;width:250px;max-width:calc(100vw - 40px);background:#fff;border:2px solid #2f8f5b;border-radius:10px;padding:8px;box-shadow:0 8px 24px rgba(0,0,0,.2);display:flex;flex-direction:column;gap:6px;cursor:default}
+.tr-dag:nth-last-child(-n+2) .tr-nieuw{left:auto;right:2px}
+.tr-nieuw-kop{font-size:11.5px;font-weight:800;color:#2f8f5b}
+.tr-nieuw-tekst{border:1px solid var(--line);border-radius:7px;padding:6px 8px;font:inherit;font-size:13px}
+.tr-nieuw-geb{display:flex;gap:4px;flex-wrap:wrap}
+.tr-nieuw-geb .kchip{padding:3px 8px;font-size:11px}
+.tr-nieuw-knoppen{display:flex;gap:6px;align-items:center}
+.tr-nieuw-knoppen select{padding:5px 6px;border:1px solid var(--line);border-radius:7px;font:inherit;font-size:12px;background:#fff}
+.tr-nieuw-ok{padding:6px 12px !important;font-size:12.5px !important}
 .tr-nu{position:absolute;left:0;right:0;height:2px;background:var(--red);z-index:2}
 .tr-nu::before{content:'';position:absolute;left:-4px;top:-3px;width:8px;height:8px;border-radius:50%;background:var(--red)}
 /* Dagplanning + dagafsluiting */
@@ -2225,6 +2235,48 @@ function tijdroosterHtml(dagen, today){
 }
 // Taak verslepen in het tijdrooster: naar een ander tijdstip (per kwartier) of een andere dag.
 // Na loslaten krijgt de taak die tijd als vaste tijd.
+let _sleepEind = 0;
+// Klik op een leeg tijdstip in het rooster → klein invulvak op die plek: taak, gebied en duur
+function klikNieuweTaak(el){
+  el.querySelectorAll('.tr-dag[data-trdag]').forEach(kol=>{
+    kol.onclick = e=>{
+      if (e.target.closest('.tr-blok, .tr-nieuw') || Date.now() - _sleepEind < 400) return;
+      el.querySelector('.tr-nieuw')?.remove();
+      const y = e.clientY - kol.getBoundingClientRect().top;
+      const min = Math.max(ROOSTER[0]*60, Math.min(ROOSTER[1]*60 - 15, Math.floor((ROOSTER[0]*60 + y/UUR_PX*60) / 15) * 15));
+      const datum = kol.dataset.trdag, tijd = tStr(min);
+      let gb = dsGebied;
+      const v2 = state.takenV2 !== false;
+      const vak = document.createElement('div');
+      vak.className = 'tr-nieuw';
+      vak.style.top = rY(min) + 'px';
+      vak.innerHTML = `<div class="tr-nieuw-kop">🕑 ${dagLabel(datum)} · ${tijd}</div>
+        <input type="text" class="tr-nieuw-tekst" placeholder="Wat ga je doen?">
+        ${v2?`<div class="tr-nieuw-geb">${GEBIEDEN.map(g=>`<button class="kchip${g.k===gb?' on':''}" data-ng="${g.k}" style="--kc:${g.c}">${esc(g.kort)}</button>`).join('')}</div>`:''}
+        <div class="tr-nieuw-knoppen">
+          ${v2?`<select class="tr-nieuw-duur">${DUREN.map(m=>`<option value="${m}"${m===60?' selected':''}>${fmtDuur(m)}</option>`).join('')}</select>`:''}
+          <button class="bigbtn tr-nieuw-ok">Inplannen</button>
+          <button class="qbtn tr-nieuw-weg" title="Annuleren (Esc)">✕</button>
+        </div>`;
+      kol.appendChild(vak);
+      const inp = vak.querySelector('.tr-nieuw-tekst');
+      vak.onclick = ev=>ev.stopPropagation();
+      vak.onpointerdown = ev=>ev.stopPropagation();
+      vak.querySelectorAll('[data-ng]').forEach(b=>b.onclick=()=>{ gb = b.dataset.ng; vak.querySelectorAll('[data-ng]').forEach(x=>x.classList.toggle('on', x===b)); inp.focus(); });
+      const opslaan = async ()=>{
+        const tekst = inp.value.trim(); if (!tekst) { inp.focus(); return; }
+        const duur = Number(vak.querySelector('.tr-nieuw-duur')?.value) || 60;
+        dsGebied = gb;
+        vak.remove();
+        await addTaken([`${tekst} om ${tijd}`], datum, gb, duur);
+      };
+      vak.querySelector('.tr-nieuw-ok').onclick = opslaan;
+      vak.querySelector('.tr-nieuw-weg').onclick = ()=>vak.remove();
+      inp.onkeydown = ev=>{ if (ev.key==='Enter') opslaan(); if (ev.key==='Escape') vak.remove(); };
+      inp.focus();
+    };
+  });
+}
 function sleepTaken(el){
   el.querySelectorAll('.tr-taak[data-tid]').forEach(blok=>{
     blok.onpointerdown = e=>{
@@ -2251,6 +2303,7 @@ function sleepTaken(el){
         document.removeEventListener('pointermove', beweeg);
         document.removeEventListener('pointerup', los);
         if (!gesleept || !doel) return;
+        _sleepEind = Date.now();
         blok.classList.remove('sleept');
         if (state.takenTijd === false) { toast('Verslepen naar een tijd werkt pas na migratie-taaktijd.sql in Supabase'); render(); return; }
         if (doel.datum === t.datum && doel.tijd === t.tijd) { render(); return; }
@@ -2299,6 +2352,7 @@ function renderWeek(){
     </div>
   </div>`;
   sleepTaken(el);
+  klikNieuweTaak(el);
   el.querySelectorAll('[data-open]').forEach(r=>r.onclick=(e)=>{ e.stopPropagation(); openEdit(r.dataset.open); });
   el.querySelectorAll('[data-goto]').forEach(r=>r.onclick=()=>{ view=r.dataset.goto; localStorage.setItem('mkt_view',view); render(); });
   el.querySelectorAll('[data-tgl]').forEach(c=>c.onclick=(e)=>{ e.stopPropagation(); toggleTaak(c.dataset.tgl, c.checked); });
