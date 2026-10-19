@@ -1836,7 +1836,6 @@ const VASTE_AFSPRAKEN = [
   { k:'weekendcheck', dagen:[5], van:'15:30', tot:'16:00', titel:'Weekendcheck Meta-advertenties', ico:'🔍', gebied:'ads',
     txt:'staan alle advertenties en budgetten goed voor het weekend?' },
 ];
-const AFSLUITING_TIJD = '16:45'; // herinnering in de app; staat niet als blok in de agenda (Bryan, 19 okt 2026)
 const tMin = hm => { const [h,m] = hm.split(':').map(Number); return h*60+m; };
 const tStr = m => `${String(Math.floor(m/60)).padStart(2,'0')}:${String(m%60).padStart(2,'0')}`;
 const isoLokaal = d => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
@@ -1879,17 +1878,14 @@ async function schuifDoor(ids, naar){
   await loadFromDB(); render();
   if (document.getElementById('afsl')) toonAfsluiting(true);
 }
-// ── Dagafsluiting (16:45): openstaande taken van vandaag afvinken of doorschuiven ──
-// Werkt zolang het marketingbord open staat (tabblad mag op de achtergrond): pop-up in de app
-// en, als meldingen aanstaan, een systeemmelding. Eén keer per dag; "later" vraagt het over 30 min opnieuw.
-const AFSL_KEY = 'mkt_afsluiting';
+// ── Dagafsluiting: openstaande taken van vandaag afvinken of doorschuiven ──
+// Alleen handmatig via de knop in de dagplanning (automatische herinnering bewust weg, Bryan 19 okt 2026).
 function toonAfsluiting(force=false){
   const today = todayISO();
   const open = (state.taken||[]).filter(t=>t.datum===today && !t.klaar);
   document.getElementById('afsl')?.remove();
   if (!open.length) {
     if (force) toast('✅ Alles van vandaag is af — mooi werk!');
-    try { localStorage.setItem(AFSL_KEY, today); } catch(e) {}
     return;
   }
   const naar = volgendeWerkdag(today);
@@ -1912,25 +1908,9 @@ function toonAfsluiting(force=false){
   ov.querySelectorAll('[data-afok]').forEach(b=>b.onclick=async()=>{ await toggleTaak(b.dataset.afok, true); toonAfsluiting(true); });
   ov.querySelectorAll('[data-afdoor]').forEach(b=>b.onclick=()=>schuifDoor([b.dataset.afdoor], naar));
   ov.querySelector('#afsl_alles').onclick = ()=>schuifDoor(open.map(t=>t.id), naar);
-  ov.querySelector('#afsl_later').onclick = ()=>{ ov.remove(); _afslLater = Date.now(); };
+  ov.querySelector('#afsl_later').onclick = ()=>ov.remove();
 }
-let _afslLater = 0, _afslGemeld = '';
-function checkAfsluiting(){
-  const nu = new Date(), today = todayISO();
-  if (document.getElementById('app')?.style.display==='none' || !state.taken) return;
-  if (!WERKDAGEN.includes(nu.getDay())) return;
-  if (nu.getHours()*60+nu.getMinutes() < tMin(AFSLUITING_TIJD)) return;
-  let gedaan = ''; try { gedaan = localStorage.getItem(AFSL_KEY)||''; } catch(e) {}
-  if (gedaan===today || document.getElementById('afsl') || Date.now()-_afslLater < 30*60e3) return;
-  const open = state.taken.filter(t=>t.datum===today && !t.klaar).length;
-  if (!open) return;
-  if (_afslGemeld!==today && 'Notification' in window && Notification.permission==='granted') {
-    new Notification('🔔 Dagafsluiting', { body:`Nog ${open} ${open>1?'taken':'taak'} open — afvinken of doorschuiven?` });
-    _afslGemeld = today;
-  }
-  toonAfsluiting();
-}
-setInterval(checkAfsluiting, 60e3);
+
 const afsprakenOp = d => VASTE_AFSPRAKEN.filter(a=>a.dagen.includes(new Date(d+'T12:00:00').getDay()));
 const afspraakMin = a => { const [h1,m1]=a.van.split(':').map(Number), [h2,m2]=a.tot.split(':').map(Number); return (h2*60+m2)-(h1*60+m1); };
 let dsGebied = 'ads', dsDatum = null;
@@ -2063,8 +2043,7 @@ function dagplanningHtml(dagen){
           }).join('')}
           ${ind.past.length?`<div class="dp-past"><b>⚠ Past niet meer op ${dagLabel(d)}:</b>${ind.past.map(t=>taakRij(t,'',true)).join('')}</div>`:''}
         </div>
-        ${d===today && nOpen ? `<button class="qbtn" id="dp_afsluiten" style="margin-top:8px">🔔 Dagafsluiting nu doen (${nOpen} open)</button>`:''}
-        ${'Notification' in window && Notification.permission==='default' ? `<button class="qbtn" id="dp_meldingen" style="margin-top:8px">🔔 Meldingen aanzetten</button>`:''}
+        ${d===today && nOpen ? `<button class="qbtn" id="dp_afsluiten" style="margin-top:8px">🔔 Dag afsluiten (${nOpen} open)</button>`:''}
       </div>
     </div>
   </div>`;
@@ -2148,8 +2127,6 @@ function renderWeek(){
   if (oudBtn) oudBtn.onclick = ()=> schuifDoor(openOud.map(t=>t.id), today);
   const afBtn = el.querySelector('#dp_afsluiten');
   if (afBtn) afBtn.onclick = ()=> toonAfsluiting(true);
-  const mBtn = el.querySelector('#dp_meldingen');
-  if (mBtn) mBtn.onclick = async ()=>{ await Notification.requestPermission(); render(); };
   el.querySelectorAll('[data-tgeb]').forEach(b=>b.onclick=(e)=>{
     e.stopPropagation();
     const t = state.taken.find(x=>x.id===b.dataset.tgeb);
