@@ -165,6 +165,11 @@ nav.fases{background:#20301a;border-bottom:1px solid #33421f;padding:0 18px;disp
 .nt-eerder{border-top:1px solid #eef0e6;padding:7px 0}
 .nt-kop{display:flex;justify-content:space-between;align-items:center;font-size:12px;margin-bottom:3px}
 .nt-tekstlees{white-space:pre-wrap;font-size:12.5px;color:#3f4a2a;max-height:7.5em;overflow:hidden}
+/* Posts verslepen */
+.ppost,.calpost{cursor:grab;user-select:none}
+.post-weg{opacity:.35}
+.post-spook{position:fixed;z-index:999;pointer-events:none;box-shadow:0 8px 20px rgba(0,0,0,.25);transform:rotate(-2deg);opacity:.95}
+.droptarget{outline:2px dashed #2f8f5b;outline-offset:-3px;background:#eaf6ee !important}
 /* Contentplanning: twee banen per week */
 .pweek{margin-bottom:12px}
 .pgrid{display:grid;grid-template-columns:170px repeat(7,minmax(0,1fr))}
@@ -861,6 +866,50 @@ function quickFase(id, fase){
   if (fase==='Learnings') toast('Schrijf je learnings op — dat is de winst van deze stap');
 }
 
+// ─── Posts verslepen naar een andere dag (Contentplanning: weekbanen én maandkalender) ───
+// Een gekoppelde IG/FB/TikTok-post verhuist als geheel. In de weekbanen blijft een post in zijn eigen baan.
+let _postSleepEind = 0;
+async function verplaatsPost(id, datum){
+  const p = state.posts.find(x=>x.id===id); if (!p || !datum || p.datum===datum) return;
+  const groep = state.posts.filter(x=>groepKey(x)===groepKey(p));
+  for (const x of groep) { x.datum = datum; x._updatedAt = new Date().toISOString(); await upsertPost(x, false); }
+  toast(`📅 ${p.titel} → ${dagLabel(datum)}`);
+  render();
+}
+function sleepPosts(root, itemSel, idVan, doelSel, datumVan, magNaar){
+  root.querySelectorAll(itemSel).forEach(item=>{
+    item.style.touchAction = 'none';
+    item.onpointerdown = e=>{
+      if (e.button !== 0) return;
+      const start = { x:e.clientX, y:e.clientY };
+      let spook = null, doel = null;
+      const beweeg = ev=>{
+        if (!spook && Math.hypot(ev.clientX-start.x, ev.clientY-start.y) < 6) return;
+        if (!spook) {
+          const r = item.getBoundingClientRect();
+          spook = item.cloneNode(true); spook.classList.add('post-spook');
+          Object.assign(spook.style, { width:r.width+'px', left:r.left+'px', top:r.top+'px' });
+          document.body.appendChild(spook); item.classList.add('post-weg');
+        }
+        spook.style.left = (ev.clientX - 20) + 'px'; spook.style.top = (ev.clientY - 12) + 'px';
+        const cel = document.elementsFromPoint(ev.clientX, ev.clientY).map(x=>x.closest?.(doelSel)).find(Boolean);
+        root.querySelectorAll('.droptarget').forEach(x=>x.classList.remove('droptarget'));
+        doel = cel && magNaar(item, cel) ? cel : null;
+        doel?.classList.add('droptarget');
+      };
+      const los = ()=>{
+        document.removeEventListener('pointermove', beweeg); document.removeEventListener('pointerup', los);
+        if (!spook) return;
+        _postSleepEind = Date.now();
+        spook.remove(); item.classList.remove('post-weg');
+        root.querySelectorAll('.droptarget').forEach(x=>x.classList.remove('droptarget'));
+        if (doel) verplaatsPost(idVan(item), datumVan(doel));
+      };
+      document.addEventListener('pointermove', beweeg); document.addEventListener('pointerup', los);
+      e.preventDefault();   // geen tekstselectie tijdens het slepen
+    };
+  });
+}
 // ─── RENDER: KALENDER (binnen Planning) ─────────────────────────
 function renderCal(){
   const wrap = document.getElementById('planning');
@@ -891,11 +940,12 @@ function renderCal(){
   }
   document.getElementById('calgrid').innerHTML = html;
   wrap.querySelectorAll('.calpost').forEach(cp=>{
-    cp.onclick = e => { e.stopPropagation(); openEdit(cp.dataset.id); };
+    cp.onclick = e => { e.stopPropagation(); if (Date.now()-_postSleepEind < 400) return; openEdit(cp.dataset.id); };
   });
   wrap.querySelectorAll('.calcell').forEach(cell=>{
-    cell.onclick = () => openEdit(null, { datum: cell.dataset.dag, fase:'Ingepland' });
+    cell.onclick = () => { if (Date.now()-_postSleepEind < 400) return; openEdit(null, { datum: cell.dataset.dag, fase:'Ingepland' }); };
   });
+  sleepPosts(wrap.querySelector('#calgrid'), '.calpost', i=>i.dataset.id, '.calcell', c=>c.dataset.dag, ()=>true);
 }
 
 // ─── KANAAL-COACH & BAIT-CHECKER (onderzoek 20 jul 2026) ────────
@@ -1807,13 +1857,17 @@ function renderPlanning(){
     </div>
   </div>`;
   renderCal();
+  sleepPosts(el.querySelector('.pgrid'), '.ppost', i=>i.dataset.open, '.pcel', c=>c.dataset.pnew.split('|')[1],
+    (item, cel)=> item.closest('.pcel')?.dataset.pnew.split('|')[0] === cel.dataset.pnew.split('|')[0]);
   el.querySelectorAll('[data-open]').forEach(r=>r.onclick = e => {
     e.stopPropagation();
+    if (Date.now()-_postSleepEind < 400) return;
     if (e.target.dataset.q) { const [id,fase]=e.target.dataset.q.split('|'); quickFase(id,fase); return; }
     openEdit(r.dataset.open);
   });
   // Leeg vak in een baan → naar Nieuwe post met platform en datum al ingevuld
   el.querySelectorAll('[data-pnew]').forEach(c=>c.onclick = () => {
+    if (Date.now()-_postSleepEind < 400) return;
     const [pl, d] = c.dataset.pnew.split('|');
     _comp.kanaal = pl==='social' ? 'social' : 'LinkedIn';
     _comp.datum = d;
