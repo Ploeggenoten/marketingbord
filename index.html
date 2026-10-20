@@ -1868,7 +1868,8 @@ const GEBIEDEN = [
   { k:'ads',     n:'Advertenties (Meta)', kort:'Ads',      c:'#2f6fb0' },
   { k:'werving', n:'Vacatures & werving', kort:'Werving',  c:'#c27a1a' },
   { k:'web',     n:'Website & SEO',       kort:'Web',      c:'#7a4fa3' },
-  { k:'overig',  n:'Overig & overleg',    kort:'Overig',   c:'#8a917c' },
+  { k:'video',   n:'Video editten',       kort:'Video',    c:'#d1497b' },   // toegevoegd 20 okt 2026
+  { k:'overig',  n:'Overig & overleg',    kort:'Overig',   c:'#8a917c' },   // moet de laatste blijven (terugval)
 ];
 const gebied = k => GEBIEDEN.find(g=>g.k===k) || GEBIEDEN[GEBIEDEN.length-1];
 const DUREN = Array.from({length:32}, (_,i)=>(i+1)*15);   // 15 min t/m 8 uur, per kwartier
