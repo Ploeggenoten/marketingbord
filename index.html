@@ -158,18 +158,13 @@ nav.fases{background:#20301a;border-bottom:1px solid #33421f;padding:0 18px;disp
   .dp-rij .taakrow .tt{flex:1 1 calc(100% - 30px)}
   .dp-rij .taakrow .dchip[data-tschuif]{margin-left:22px}
 }
-/* Notitieblok */
+/* Notities van de dag */
 .notitieblok{margin-bottom:12px}
-.nt-lijst{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:10px}
-.nt-kaart{background:#fffdf3;border:1px solid #eadfb0;border-radius:10px;padding:8px 10px;display:flex;flex-direction:column;gap:6px}
-.nt-kaart.verwerkt{background:#f6f7f1;border-color:var(--line);opacity:.8}
-.nt-kop{display:flex;justify-content:space-between;font-size:11px;color:var(--muted);font-weight:600}
-.nt-status{font-weight:500}
-.nt-tekst{border:none;background:transparent;font:inherit;font-size:13.5px;line-height:1.45;resize:none;outline:none;min-height:60px;padding:0}
-.nt-knoppen{display:flex;gap:6px;align-items:center;flex-wrap:wrap}
-.nt-knoppen .tdel{margin-left:auto}
-.nt-archief{margin-top:10px}
-.nt-archief summary{cursor:pointer;font-size:12.5px;font-weight:700;color:var(--muted);margin-bottom:8px}
+.notitieblok textarea{width:100%;border:1px solid #eadfb0;background:#fffdf3;border-radius:9px;padding:8px 10px;font:inherit;font-size:13.5px;line-height:1.45;resize:vertical}
+.nt-archief summary{cursor:pointer;font-size:12.5px;font-weight:700;color:var(--muted);margin:6px 0}
+.nt-eerder{border-top:1px solid #eef0e6;padding:7px 0}
+.nt-kop{display:flex;justify-content:space-between;align-items:center;font-size:12px;margin-bottom:3px}
+.nt-tekstlees{white-space:pre-wrap;font-size:12.5px;color:#3f4a2a;max-height:7.5em;overflow:hidden}
 /* Contentplanning: twee banen per week */
 .pweek{margin-bottom:12px}
 .pgrid{display:grid;grid-template-columns:170px repeat(7,minmax(0,1fr))}
@@ -2154,71 +2149,63 @@ function weekBalansHtml(dagen){
 }
 // Dagplanning: per dag taken invoeren → automatisch over de dag ingepland (tijdlijn),
 // met de Meta-punten uit de dagstart erbij.
-// ── Notitieblok: eerst vrij noteren, later omzetten in taken (Bryan, 20 okt 2026) ──
-let _ntOud = false, _ntTimers = {};
+// ── Notities van de dag: één notitievak per dag, net als de dagplanning (Bryan, 20 okt 2026) ──
+// Volgt de gekozen dag in de dagplanning (dsDatum). Wordt vanzelf opgeslagen; eerdere dagen terug te lezen.
+let _ntTimer = null, _ntOud = false;
+const notitieVan = d => (state.notities||[]).find(n=>n.datum===d) || null;
 function notitieblokHtml(){
   const N = state.notities;
-  if (N === null) return `<div class="inzbox notitieblok"><h4>📝 Notitieblok</h4>
-    <div class="advies rood" style="margin:0"><b>⚙️ Eén keer instellen</b>Draai <b>supabase/migratie-notities.sql</b> in de Supabase SQL Editor; daarna kun je hier notities maken.</div></div>`;
-  const open = N.filter(n=>!n.verwerkt), oud = N.filter(n=>n.verwerkt);
-  const kaart = n => `<div class="nt-kaart${n.verwerkt?' verwerkt':''}" data-nid="${n.id}">
-    <div class="nt-kop"><span>${new Date(n.created_at).toLocaleDateString('nl-NL',{weekday:'short',day:'numeric',month:'short'})} ${new Date(n.created_at).toLocaleTimeString('nl-NL',{hour:'2-digit',minute:'2-digit'})}</span><span class="nt-status" data-nst="${n.id}"></span></div>
-    <textarea class="nt-tekst" data-ntekst="${n.id}" rows="3" placeholder="Schrijf hier je notitie… (elke regel kan straks een taak worden)">${esc(n.tekst)}</textarea>
-    <div class="nt-knoppen">
-      ${n.verwerkt ? `<button class="qbtn" data-nweer="${n.id}">↺ Terugzetten</button>`
-        : `<button class="qbtn" data-ntaken="${n.id}" title="Zet de regels van deze notitie in de dagplanning, zodat je ze kunt inplannen">→ Naar dagplanning</button>
-           <button class="qbtn" data-nklaar="${n.id}" title="Notitie is verwerkt — naar het archief">✓ Verwerkt</button>`}
-      <button class="tdel" data-nweg="${n.id}" title="Notitie verwijderen">✕</button>
+  if (N === null) return `<div class="inzbox notitieblok"><h4>📝 Notities</h4>
+    <div class="advies rood" style="margin:0"><b>⚙️ Eén keer instellen</b>Draai <b>supabase/migratie-notities.sql</b> in de Supabase SQL Editor; daarna kun je hier per dag notities maken.</div></div>`;
+  const d = dsDatum || todayISO(), n = notitieVan(d);
+  const eerder = N.filter(x=>x.datum && x.datum!==d && (x.tekst||'').trim()).sort((a,b)=>b.datum.localeCompare(a.datum));
+  return `<div class="inzbox notitieblok" id="nt_box">
+    <div class="ds-kop" style="margin-top:0;display:flex;justify-content:space-between;align-items:center">📝 Notities van ${d===todayISO()?'vandaag':dagLabel(d)} <small id="nt_status">${n?.updated_at?'✓ opgeslagen':''}</small></div>
+    <textarea id="nt_tekst" rows="4" placeholder="Schrijf hier je notities van ${d===todayISO()?'vandaag':dagLabel(d)}… (elke regel kan straks een taak worden)">${esc(n?.tekst||'')}</textarea>
+    <div style="display:flex;gap:7px;align-items:center;flex-wrap:wrap;margin-top:6px">
+      <button class="qbtn" id="nt_naartaken" title="Zet de regels van deze notitie in de dagplanning hierboven">→ Naar takenlijst</button>
+      ${eerder.length?`<details class="nt-archief"${_ntOud?' open':''} style="flex-basis:100%"><summary>Eerdere notities (${eerder.length})</summary>
+        ${eerder.map(x=>`<div class="nt-eerder"><div class="nt-kop"><b>${dagLabel(x.datum)}</b><button class="qbtn" data-ntopen="${x.datum}">Openen</button></div><div class="nt-tekstlees">${esc(x.tekst)}</div></div>`).join('')}
+      </details>`:''}
     </div>
   </div>`;
-  return `<div class="inzbox notitieblok"><h4 style="display:flex;justify-content:space-between;align-items:center;gap:8px">📝 Notitieblok
-      <button class="qbtn" id="nt_nieuw">＋ Nieuwe notitie</button></h4>
-    <div class="nt-lijst">${open.map(kaart).join('') || `<div class="toel" style="margin:0">Nog geen notities. Klik op <b>＋ Nieuwe notitie</b>, schrijf wat je bezighoudt, en zet het later met <b>→ Naar dagplanning</b> om in taken.</div>`}</div>
-    ${oud.length ? `<details class="nt-archief"${_ntOud?' open':''}><summary>Verwerkte notities (${oud.length})</summary><div class="nt-lijst">${oud.map(kaart).join('')}</div></details>` : ''}
-  </div>`;
 }
-async function ntNieuw(){
-  const { data, error } = await sb.from('mkt_notities').insert({ tekst:'', door: currentProfile?.naam||'' }).select().single();
-  if (error) { toast('Notitie maken mislukt — is migratie-notities.sql gedraaid?'); return; }
-  state.notities.unshift(data); render();
-  document.querySelector(`[data-ntekst="${data.id}"]`)?.focus();
-}
-function ntOpslaanLater(id, tekst){
-  const n = state.notities.find(x=>x.id===id); if (n) n.tekst = tekst;
-  const st = document.querySelector(`[data-nst="${id}"]`); if (st) st.textContent = 'opslaan…';
-  clearTimeout(_ntTimers[id]);
-  _ntTimers[id] = setTimeout(async ()=>{
-    const { error } = await sb.from('mkt_notities').update({ tekst, updated_at: new Date().toISOString() }).eq('id', id);
-    const st2 = document.querySelector(`[data-nst="${id}"]`); if (st2) st2.textContent = error ? '⚠ niet opgeslagen' : '✓ opgeslagen';
+function ntOpslaanLater(d, tekst){
+  const st = document.getElementById('nt_status'); if (st) st.textContent = 'opslaan…';
+  let n = notitieVan(d);
+  if (!n) { n = { id:null, datum:d, tekst, door: currentProfile?.naam||'' }; state.notities.unshift(n); }
+  n.tekst = tekst;
+  clearTimeout(_ntTimer);
+  _ntTimer = setTimeout(async ()=>{
+    let error;
+    if (n.id) ({ error } = await sb.from('mkt_notities').update({ tekst:n.tekst, updated_at:new Date().toISOString() }).eq('id', n.id));
+    else { const r = await sb.from('mkt_notities').insert({ datum:n.datum, tekst:n.tekst, door:n.door }).select().single(); error = r.error; if (!error) { n.id = r.data.id; n.updated_at = r.data.updated_at; } }
+    const st2 = document.getElementById('nt_status'); if (st2) st2.textContent = error ? '⚠ niet opgeslagen — is migratie-notities.sql gedraaid?' : '✓ opgeslagen';
   }, 700);
 }
-async function ntZet(id, patch){
-  await sb.from('mkt_notities').update(patch).eq('id', id);
-  Object.assign(state.notities.find(x=>x.id===id)||{}, patch); render();
-}
 function bindNotitieblok(el){
-  el.querySelector('#nt_nieuw')?.addEventListener('click', ntNieuw);
-  el.querySelectorAll('[data-ntekst]').forEach(ta=>{
-    const groei = ()=>{ ta.style.height = 'auto'; ta.style.height = Math.min(320, ta.scrollHeight + 2) + 'px'; };
-    groei();
-    ta.oninput = ()=>{ groei(); ntOpslaanLater(ta.dataset.ntekst, ta.value); };
-  });
-  el.querySelectorAll('[data-ntaken]').forEach(b=>b.onclick=()=>{
-    const n = state.notities.find(x=>x.id===b.dataset.ntaken);
-    const ta = document.querySelector(`[data-ntekst="${n.id}"]`);
-    const regels = (ta?.value ?? n.tekst).split('\n').map(r=>r.replace(/^\s*[-•*]\s*/,'').trim()).filter(Boolean);
-    if (!regels.length) { toast('Deze notitie is nog leeg'); return; }
+  const ta = el.querySelector('#nt_tekst');
+  if (ta) {
+    const d = dsDatum || todayISO();
+    const groei = ()=>{ ta.style.height = 'auto'; ta.style.height = Math.min(360, Math.max(96, ta.scrollHeight + 2)) + 'px'; };
+    requestAnimationFrame(groei);   // pas meten als het vak echt op het scherm staat
+    ta.oninput = ()=>{ groei(); ntOpslaanLater(d, ta.value); };
+  }
+  el.querySelector('#nt_naartaken')?.addEventListener('click', ()=>{
+    const regels = (el.querySelector('#nt_tekst')?.value||'').split('\n').map(r=>r.replace(/^\s*[-•*]\s*/,'').trim()).filter(Boolean);
+    if (!regels.length) { toast('Er staan nog geen notities'); return; }
     dsTekst = (dsTekst.trim() ? dsTekst.replace(/\s+$/,'') + '\n' : '') + regels.join('\n');
     render();
     document.getElementById('ds_box')?.scrollIntoView({ behavior:'smooth', block:'start' });
-    toast(`${regels.length} ${regels.length>1?'regels':'regel'} in de dagplanning gezet — kies de dag en klik op Inplannen`);
+    toast(`${regels.length} ${regels.length>1?'regels':'regel'} in de takenlijst gezet — haal weg wat geen taak is en klik op Inplannen`);
   });
-  el.querySelectorAll('[data-nklaar]').forEach(b=>b.onclick=()=>ntZet(b.dataset.nklaar, { verwerkt:true }));
-  el.querySelectorAll('[data-nweer]').forEach(b=>b.onclick=()=>ntZet(b.dataset.nweer, { verwerkt:false }));
-  el.querySelectorAll('[data-nweg]').forEach(b=>b.onclick=async()=>{
-    if (!confirm('Deze notitie verwijderen?')) return;
-    await sb.from('mkt_notities').delete().eq('id', b.dataset.nweg);
-    state.notities = state.notities.filter(x=>x.id!==b.dataset.nweg); render();
+  el.querySelectorAll('[data-ntopen]').forEach(b=>b.onclick=()=>{
+    const d = b.dataset.ntopen;
+    // andere week? dan ernaartoe bladeren
+    const maandag = weekDagen(0)[0], doelMa = (()=>{ const x = new Date(d+'T12:00:00'); x.setDate(x.getDate()-((x.getDay()+6)%7)); return isoLokaal(x); })();
+    weekOffset = Math.round((new Date(doelMa+'T12:00:00') - new Date(maandag+'T12:00:00')) / (7*864e5));
+    dsDatum = d; render();
+    document.getElementById('nt_box')?.scrollIntoView({ behavior:'smooth', block:'center' });
   });
   const arch = el.querySelector('.nt-archief'); if (arch) arch.ontoggle = ()=>{ _ntOud = arch.open; };
 }
@@ -2550,7 +2537,7 @@ function sleepTaken(el){
 function renderWeek(){
   const el = document.getElementById('week');
   // typ je in een notitie terwijl het scherm ververst, dan blijft de cursor waar hij was
-  const actief = document.activeElement, ntActief = actief?.dataset?.ntekst, ntSel = ntActief ? [actief.selectionStart, actief.selectionEnd] : null;
+  const actief = document.activeElement, ntActief = actief?.id==='nt_tekst', ntSel = ntActief ? [actief.selectionStart, actief.selectionEnd] : null;
   const today = todayISO();
   const dagen = weekDagen(weekOffset);
   const T = state.taken;
@@ -2591,7 +2578,7 @@ function renderWeek(){
   sleepTaken(el);
   klikNieuweTaak(el);
   bindNotitieblok(el);
-  if (ntActief) { const ta = el.querySelector(`[data-ntekst="${ntActief}"]`); if (ta) { ta.focus({ preventScroll:true }); ta.setSelectionRange(...ntSel); } }
+  if (ntActief) { const ta = el.querySelector('#nt_tekst'); if (ta) { ta.focus({ preventScroll:true }); ta.setSelectionRange(...ntSel); } }
   el.querySelector('#ol_aan')?.addEventListener('click', teamsKoppelen);
   el.querySelector('#ol_sync')?.addEventListener('click', ()=>teamsSync(true));
   el.querySelector('#ol_uit')?.addEventListener('click', teamsOntkoppelen);
