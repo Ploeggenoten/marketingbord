@@ -1248,7 +1248,7 @@ function waakhondHtml(){
   const advKaart = b => `<div class="advies ${b.besluit==='budget'?'':'warn'}">
     <b>${b.besluit==='budget'?'💶 Budget':'💡 Advies'}: ${esc(b.advertentie)}</b>
     <small style="color:var(--muted)">${esc(b.campagne)} · ${(b.created_at||'').slice(0,10)}</small><br>${esc(b.note||'')}
-    <div style="margin-top:7px"><button class="qbtn" data-wh="bevestig|${b.id}|">✓ Gezien / afgehandeld</button></div>
+    <div style="margin-top:7px;display:flex;gap:6px;flex-wrap:wrap"><button class="qbtn" data-wh="bevestig|${b.id}|">✓ Gezien / afgehandeld</button>${(state.taken||[]).some(t=>t.tekst===adviesAlsTaak(b) && !t.klaar) ? '<span class="ds-ok">✓ staat in Mijn week</span>' : `<button class="qbtn" data-advtaak="${b.id}" title="Als taak in Mijn week zetten (vandaag, 15 min, Ads)">＋ als taak in Mijn week</button>`}</div>
   </div>`;
   return `<div class="inzbox" style="grid-column:1/-1">
     <h4 style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">🐕 Advertentie-waakhond & mediabuyer-agent
@@ -1346,6 +1346,11 @@ function renderPrestatie(){
 
   el.querySelectorAll('[data-open]').forEach(u=>u.onclick=()=>openEdit(u.dataset.open));
   el.querySelector('#metasyncbtn').onclick = () => metaSync(true);
+  el.querySelectorAll('[data-advtaak]').forEach(b=>b.onclick=()=>{
+    const adv = state.besluiten.find(x=>String(x.id)===b.dataset.advtaak); if (!adv) return;
+    const dag = WERKDAGEN.includes(new Date(todayISO()+'T12:00:00').getDay()) ? todayISO() : volgendeWerkdag(todayISO());
+    addTaken([adviesAlsTaak(adv)], dag, 'ads', 15);
+  });
   el.querySelectorAll('[data-wh]').forEach(b=>{
     b.onclick = () => {
       const [act, a, c] = b.dataset.wh.split('|');
@@ -1852,8 +1857,6 @@ function autoTakenVandaag(){
   if (oud) items.push({ ico:'🗄', txt:`<span style="color:var(--muted)">${oud} oude post${oud>1?'s':''} van vóór deze week nooit afgerond — opruimen kan in Contentplanning</span>`, goto:'planning' });
   state.posts.filter(p=>(p.publiceerLog||'').startsWith('⚠')).forEach(p=>
     items.push({ ico:'🚀', txt:`Automatisch publiceren mislukt: <b>${esc(p.titel)}</b>`, open:p.id, rood:true }));
-  const wh = adWaakhond().filter(a=>a.sev==='rood').length;
-  if (wh) items.push({ ico:'🐕', txt:`<b>${wh} advertentie${wh>1?'s':''}</b> met rood waakhond-advies`, goto:'prestatie', rood:true });
   const nag = state.posts.filter(p=>PUB(p) && p.datum && p.datum<=isoDaysAgo(3) && !(Number(p.resultaat?.bereik)>0)).length;
   if (nag) items.push({ ico:'📊', txt:`${nag} gepubliceerde post${nag>1?'s':''} zonder resultaten — even invullen`, goto:'prestatie' });
   filmdagen().forEach(([groep,posts])=>{
@@ -2023,10 +2026,6 @@ function spraakStartStop(){
   rec.onend = () => { _spraak = null; render(); };
   try { rec.start(); _spraak = rec; render(); } catch(e) { toast('🎤 Inspreken kon niet starten'); }
 }
-// Open Meta-punten voor de dagstart: agent-adviezen die nog open staan
-function metaTeBespreken(){
-  return state.besluiten.filter(b=>b.door==='Claude-agent' && b.status==='open' && !(b.advertentie||'').startsWith('__'));
-}
 // "Doen: …"-zin uit een agent-advies halen als taaktekst
 function adviesAlsTaak(b){
   const note = (b.note||'').replace(/^🤖\s*/,'');
@@ -2147,9 +2146,6 @@ function dagplanningHtml(dagen){
   if (!dsDatum || !dagen.includes(dsDatum)) dsDatum = werk.find(d=>d>=today) || werk[0] || dagen[0];
   const d = dsDatum;
   const ind = dagIndeling(d);
-  const open = metaTeBespreken();
-  const alGepland = new Set((state.taken||[]).filter(t=>t.datum===d).map(t=>t.tekst));
-  const rood = adWaakhond().filter(a=>a.sev==='rood').length;
   const v2 = state.takenV2!==false;
   const nOpen = (state.taken||[]).filter(t=>t.datum===d && !t.klaar).length;
   return `<div class="inzbox dagplan" id="ds_box">
@@ -2166,13 +2162,6 @@ function dagplanningHtml(dagen){
           ${v2?`<select id="ds_duur" title="Tijd per taak als je er geen achter zet">${DUREN.map(m=>`<option value="${m}"${m===30?' selected':''}>${fmtDuur(m)} per taak</option>`).join('')}</select>`:''}
           <button class="bigbtn" id="ds_zet" style="padding:8px 14px;font-size:13px">Inplannen</button>
         </div>
-        <div class="ds-kop" style="margin-top:14px">📣 Meta te bespreken in de dagstart</div>
-        ${open.length||rood ? `
-          ${rood?`<div class="planrow gemist" data-goto="prestatie" style="cursor:pointer"><span>🐕</span><span class="pt"><b>${rood} advertentie${rood>1?'s':''}</b> met rood waakhond-advies</span></div>`:''}
-          ${open.slice(0,6).map(b=>`<div class="ds-advies"><span>${esc(adviesAlsTaak(b))}</span>${alGepland.has(adviesAlsTaak(b))?`<span class="ds-ok">✓ ingepland</span>`:`<button class="qbtn" data-dsadv="${b.id}" title="Als taak inplannen">＋ taak</button>`}</div>`).join('')}
-          ${open.length>6?`<div class="toel" style="margin:4px 0 0">…en nog ${open.length-6} in Prestatie</div>`:''}
-          ${open.filter(b=>!alGepland.has(adviesAlsTaak(b))).length>1?`<button class="qbtn" id="ds_alleadv" style="margin-top:6px">＋ Alle open adviezen als taak</button>`:''}`
-        : `<div class="toel" style="margin:0 0 4px">Geen open Meta-adviezen — niets te bespreken.</div>`}
       </div>
       <div>
         <div class="ds-kop">🕘 Zo ziet ${d===today?'je dag':dagLabel(d)} eruit <small>${WERKTIJD.van}–${WERKTIJD.tot} · nog ${fmtUren(ind.vrijMin)} uur vrij</small></div>
@@ -2560,12 +2549,6 @@ function renderWeek(){
   if (dsZet) dsZet.onclick = async ()=>{ _spraak?.stop(); const regels = dsTa.value.split('\n'); dsTekst = ''; await addTaken(regels, dsDatum, dsGebied, dsDuur()); };
   const mic = el.querySelector('#ds_mic');
   if (mic) mic.onclick = spraakStartStop;
-  el.querySelectorAll('[data-dsadv]').forEach(b=>b.onclick=()=>{
-    const adv = state.besluiten.find(x=>String(x.id)===b.dataset.dsadv);
-    if (adv) addTaken([adviesAlsTaak(adv)], dsDatum, 'ads', 15);
-  });
-  const dsAlle = el.querySelector('#ds_alleadv');
-  if (dsAlle) dsAlle.onclick = ()=> addTaken(metaTeBespreken().map(adviesAlsTaak), dsDatum, 'ads', 15);
   // Klik op een vaste afspraak in de agenda
   el.querySelectorAll('[data-afspraak]').forEach(a=>a.onclick=(e)=>{
     e.stopPropagation();
