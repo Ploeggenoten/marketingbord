@@ -173,6 +173,7 @@ nav.fases{background:#20301a;border-bottom:1px solid #33421f;padding:0 18px;disp
 .nt-plus{width:15px;text-align:center;color:#b9a85a;font-weight:700;flex:none}
 .notitieblok textarea{width:100%;border:1px solid #eadfb0;background:#fffdf3;border-radius:9px;padding:8px 10px;font:inherit;font-size:13.5px;line-height:1.45;resize:vertical}
 .nt-archief summary{cursor:pointer;font-size:12.5px;font-weight:700;color:var(--muted);margin:6px 0}
+.nt-zoek{width:100%;margin:2px 0 6px;padding:6px 9px;border:1px solid var(--line);border-radius:8px;font:inherit;font-size:12.5px}
 .nt-eerder{border-top:1px solid #eef0e6;padding:7px 0}
 .nt-kop{display:flex;justify-content:space-between;align-items:center;font-size:12px;margin-bottom:3px}
 .nt-tekstlees{white-space:pre-wrap;font-size:12.5px;color:#3f4a2a;max-height:7.5em;overflow:hidden}
@@ -753,7 +754,17 @@ async function loadFromDB(){
   state.besluiten = bR.error ? [] : (bR.data||[]);
   // Taken voor de weekplanner (tabel kan nog ontbreken → null = setup-kaart tonen)
   const nR = await sb.from('mkt_notities').select('*').order('created_at', { ascending:false });
-  state.notities = nR.error ? null : (nR.data||[]);   // null = tabel bestaat nog niet
+  // Notities: database + lokale kopie op deze computer. Lukt de database niet, dan werken we op
+  // de lokale kopie; staat er lokaal iets nieuwers dan in de database, dan sturen we dat alsnog door.
+  const lokaal = ntLokaal();
+  state.notitiesDB = !nR.error;
+  state.notities = nR.error ? [] : (nR.data||[]).filter(n=>n.datum);
+  for (const [datum, v] of Object.entries(lokaal)) {
+    const db = state.notities.find(n=>n.datum===datum);
+    if (!db) state.notities.push({ id:null, datum, tekst:v.tekst, door:currentProfile?.naam||'', updated_at:v.t, _teSturen:true });
+    else if ((v.t||'') > (db.updated_at||'') && v.tekst !== db.tekst) { db.tekst = v.tekst; db._teSturen = true; }
+  }
+  if (state.notitiesDB) setTimeout(()=>state.notities.filter(n=>n._teSturen && n.tekst.trim()).forEach(n=>{ delete n._teSturen; ntOpslaanLater(n.datum, n.tekst, true); }), 0);
   const tR = await sb.from('mkt_taken').select('*').order('datum').order('created_at');
   state.taken = tR.error ? null : (tR.data||[]).filter(t=>t.datum>=STARTDATUM);
   if (state.taken?.length) state.takenTijd = 'tijd' in state.taken[0];
@@ -2220,12 +2231,11 @@ let _ntTimer = null, _ntOud = false;
 const notitieVan = d => (state.notities||[]).find(n=>n.datum===d) || null;
 function notitieblokHtml(){
   const N = state.notities;
-  if (N === null) return `<div class="inzbox notitieblok"><h4>📝 Notities</h4>
-    <div class="advies rood" style="margin:0"><b>⚙️ Eén keer instellen</b>Draai <b>supabase/migratie-notities.sql</b> in de Supabase SQL Editor; daarna kun je hier per dag notities maken.</div></div>`;
   const d = dsDatum || todayISO(), n = notitieVan(d);
-  const eerder = N.filter(x=>x.datum && x.datum!==d && (x.tekst||'').trim()).sort((a,b)=>b.datum.localeCompare(a.datum));
+  const alle = (N||[]).filter(x=>x.datum && (x.tekst||'').trim()).sort((a,b)=>b.datum.localeCompare(a.datum));
   return `<div class="inzbox notitieblok" id="nt_box">
-    <div class="ds-kop" style="margin-top:0;display:flex;justify-content:space-between;align-items:center">📝 Notities van ${d===todayISO()?'vandaag':dagLabel(d)} <small id="nt_status">${n?.updated_at?'✓ opgeslagen':''}</small></div>
+    <div class="ds-kop" style="margin-top:0;display:flex;justify-content:space-between;align-items:center">📝 Notities van ${d===todayISO()?'vandaag':dagLabel(d)} <small id="nt_status">${n?.updated_at?(state.notitiesDB?'✓ opgeslagen':'💾 bewaard op deze computer'):''}</small></div>
+    ${state.notitiesDB?'':`<div class="toel" style="margin:0 0 6px;color:var(--amber)">Je notities worden nu op deze computer bewaard. Draai <b>migratie-notities.sql</b> in Supabase, dan gaan ze vanzelf ook naar de database (en zie je ze op elk apparaat).</div>`}
     <div class="nt-lijst" id="nt_lijst">
       ${ntRegels(n).map((r,i)=>`<div class="nt-item${r.af?' af':''}" data-ni="${i}">
         <input type="checkbox" data-nicheck="${i}" ${r.af?'checked':''} title="Afvinken">
@@ -2237,8 +2247,9 @@ function notitieblokHtml(){
     </div>
     <div style="display:flex;gap:7px;align-items:center;flex-wrap:wrap;margin-top:6px">
       ${ntRegels(n).some(r=>!r.af)?`<button class="qbtn" id="nt_naartaken" title="Zet alle niet-afgevinkte notities in de dagplanning hierboven">→ Alles naar takenlijst</button>`:''}
-      ${eerder.length?`<details class="nt-archief"${_ntOud?' open':''} style="flex-basis:100%"><summary>Eerdere notities (${eerder.length})</summary>
-        ${eerder.map(x=>`<div class="nt-eerder"><div class="nt-kop"><b>${dagLabel(x.datum)}</b><button class="qbtn" data-ntopen="${x.datum}">Openen</button></div><div class="nt-tekstlees">${ntRegels(x).map(r=>`${r.af?'✓':'•'} ${esc(r.tekst)}`).join('\n')}</div></div>`).join('')}
+      ${alle.length?`<details class="nt-archief"${_ntOud?' open':''} style="flex-basis:100%"><summary>📚 Alle notities per dag (${alle.length} ${alle.length>1?'dagen':'dag'})</summary>
+        <input type="search" id="nt_zoek" class="nt-zoek" placeholder="Zoek in je notities…">
+        ${alle.map(x=>`<div class="nt-eerder" data-ntdag="${x.datum}" data-ntzoek="${esc((dagLabel(x.datum)+' '+x.tekst).toLowerCase())}"><div class="nt-kop"><b>${x.datum===todayISO()?'Vandaag · ':''}${new Date(x.datum+'T12:00:00').toLocaleDateString('nl-NL',{weekday:'long',day:'numeric',month:'long',year:'numeric'})}</b>${x.datum===d?'<small>open</small>':`<button class="qbtn" data-ntopen="${x.datum}">Openen</button>`}</div><div class="nt-tekstlees">${ntRegels(x).map(r=>`${r.af?'✓':'•'} ${esc(r.tekst)}`).join('\n')}</div></div>`).join('')}
       </details>`:''}
     </div>
   </div>`;
@@ -2246,24 +2257,30 @@ function notitieblokHtml(){
 // Notitie = lijstje regels; afgevinkt bewaren we als "[x] " vooraan de regel.
 const ntRegels = n => (n?.tekst||'').split('\n').filter(r=>r.trim()).map(r=>({ af:/^\[x\]\s*/i.test(r), tekst:r.replace(/^\[x\]\s*/i,'') }));
 const ntNaarTekst = regels => regels.map(r=>(r.af?'[x] ':'')+r.tekst).join('\n');
+// Lokale kopie van alle notities ({ datum: { tekst, t } }) — vangnet als de database (nog) niet wil.
+const NT_LOKAAL = 'mkt_notities_lokaal';
+function ntLokaal(){ try { return JSON.parse(localStorage.getItem(NT_LOKAAL)||'{}') || {}; } catch(e) { return {}; } }
+function ntLokaalZet(datum, tekst){ try { const l = ntLokaal(); l[datum] = { tekst, t:new Date().toISOString() }; localStorage.setItem(NT_LOKAAL, JSON.stringify(l)); } catch(e) {} }
 // Opslaan: bij Enter/afvinken/weghalen meteen, tijdens typen na een korte pauze.
 // Alle schrijfacties per notitie lopen achter elkaar (_ntKetting), zodat er nooit twee
 // rijen voor dezelfde dag ontstaan en de laatste versie altijd wint.
-let _ntKetting = Promise.resolve();
+let _ntKetting = Promise.resolve(), _ntFoutGemeld = false;
 function ntOpslaanLater(d, tekst, direct=false){
   const st = document.getElementById('nt_status'); if (st) { st.textContent = 'opslaan…'; st.style.color = ''; }
   let n = notitieVan(d);
   if (!n) { n = { id:null, datum:d, tekst, door: currentProfile?.naam||'' }; state.notities.unshift(n); }
-  n.tekst = tekst;
+  n.tekst = tekst; n.updated_at = new Date().toISOString();
+  ntLokaalZet(d, tekst);      // altijd meteen op deze computer
   clearTimeout(_ntTimer);
+  if (!state.notitiesDB) { const st3 = document.getElementById('nt_status'); if (st3) { st3.textContent = '💾 bewaard op deze computer'; st3.style.color = 'var(--amber)'; } return; }
   const schrijf = () => { _ntKetting = _ntKetting.then(async ()=>{
     let error;
     if (n.id) ({ error } = await sb.from('mkt_notities').update({ tekst:n.tekst, updated_at:new Date().toISOString() }).eq('id', n.id));
     else { const r = await sb.from('mkt_notities').insert({ datum:n.datum, tekst:n.tekst, door:n.door }).select().single(); error = r.error; if (!error) { n.id = r.data.id; n.updated_at = r.data.updated_at; } }
     const st2 = document.getElementById('nt_status');
     if (error) {
-      if (st2) { st2.textContent = '⚠ NIET opgeslagen'; st2.style.color = 'var(--red)'; }
-      toast('⚠ Notitie niet opgeslagen: ' + (/datum/.test(error.message) ? 'draai migratie-notities.sql opnieuw in Supabase (kolom datum ontbreekt)' : error.message));
+      if (st2) { st2.textContent = '💾 bewaard op deze computer (database weigert)'; st2.style.color = 'var(--amber)'; }
+      if (!_ntFoutGemeld) { _ntFoutGemeld = true; toast('Notitie bewaard op deze computer; de database weigert nog: ' + (/datum/.test(error.message) ? 'kolom datum ontbreekt — draai migratie-notities.sql opnieuw' : error.message)); }
     } else if (st2) { st2.textContent = '✓ opgeslagen'; st2.style.color = ''; }
   }); };
   if (direct) schrijf(); else _ntTimer = setTimeout(schrijf, 500);
@@ -2309,6 +2326,8 @@ function bindNotitieblok(el){
     document.getElementById('nt_box')?.scrollIntoView({ behavior:'smooth', block:'center' });
   });
   const arch = el.querySelector('.nt-archief'); if (arch) arch.ontoggle = ()=>{ _ntOud = arch.open; };
+  const zoek = el.querySelector('#nt_zoek');
+  if (zoek) zoek.oninput = ()=>{ const q = zoek.value.trim().toLowerCase(); el.querySelectorAll('[data-ntzoek]').forEach(x=>{ x.style.display = !q || x.dataset.ntzoek.includes(q) ? '' : 'none'; }); };
   // cursor terugzetten na opnieuw tekenen
   if (_ntFocus) { const f = _ntFocus === 'nieuw' ? el.querySelector('#nt_nieuw') : el.querySelector(`[data-ni-t="${_ntFocus.slice(1)}"]`); _ntFocus = null; f?.focus({ preventScroll:true }); }
 }
