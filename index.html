@@ -117,7 +117,9 @@ nav.fases{background:#20301a;border-bottom:1px solid #33421f;padding:0 18px;disp
 .tr-detail-kop{display:flex;justify-content:space-between;align-items:center;font-size:11.5px;font-weight:800;color:var(--muted)}
 .tr-detail-tekst{border:1px solid var(--line);border-radius:7px;padding:7px 9px;font:inherit;font-size:13.5px;line-height:1.4;resize:vertical;min-height:52px}
 .tr-detail-info{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
-.tr-detail-info .gchip{cursor:default}
+.tr-detail-info{font-size:11.5px;color:var(--muted);font-weight:600}
+.tr-detail-info label{display:flex;flex-direction:column;gap:2px}
+.tr-detail-info select{font:inherit;font-size:12.5px;font-weight:500;color:var(--txt);padding:4px 6px;border:1px solid var(--line);border-radius:7px;background:#fff}
 .tr-detail-knoppen{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
 .tr-taak{cursor:pointer}
 .tr-nu{position:absolute;left:0;right:0;height:2px;background:var(--red);z-index:2}
@@ -2582,7 +2584,12 @@ function toonTaakDetail(blok, t){
   vak.style.setProperty('--gc', g.c);
   vak.innerHTML = `<div class="tr-detail-kop"><span>${dagLabel(t.datum)}${b?` · ${tStr(b.van)}–${tStr(b.tot)}`:''}${t.tijd?' · vaste tijd':''}</span><button class="qbtn" data-dx="sluit" title="Sluiten (Esc)">✕</button></div>
     <textarea class="tr-detail-tekst" rows="3">${esc(t.tekst)}</textarea>
-    <div class="tr-detail-info"><span class="gchip" style="--gc:${g.c}">${esc(g.n)}</span><span class="dchip">${fmtDuur(t.duur_min||60)}</span>${t.klaar?'<span class="dchip" style="color:var(--green)">✓ afgerond</span>':''}</div>
+    <div class="tr-detail-info">
+      <label>Duur <select data-dx="duur">${DUREN.map(m=>`<option value="${m}"${m===(t.duur_min||60)?' selected':''}>${fmtDuur(m)}</option>`).join('')}${DUREN.includes(t.duur_min||60)?'':`<option selected value="${t.duur_min}">${fmtDuur(t.duur_min)}</option>`}</select></label>
+      <label>Tijd <select data-dx="tijd"><option value=""${t.tijd?'':' selected'}>automatisch${b&&!t.tijd?' ('+tStr(b.van)+')':''}</option>${Array.from({length:(ROOSTER[1]-ROOSTER[0])*4}, (_,i)=>tStr(ROOSTER[0]*60+i*15)).map(x=>`<option value="${x}"${x===t.tijd?' selected':''}>${x}</option>`).join('')}</select></label>
+      <label>Gebied <select data-dx="gebied">${GEBIEDEN.map(x=>`<option value="${x.k}"${x.k===g.k?' selected':''}>${esc(x.n)}</option>`).join('')}</select></label>
+      ${t.klaar?'<span class="dchip" style="color:var(--green)">✓ afgerond</span>':''}
+    </div>
     <div class="tr-detail-knoppen">
       <button class="bigbtn" data-dx="opslaan" style="padding:6px 11px;font-size:12px">Opslaan</button>
       <button class="qbtn" data-dx="klaar">${t.klaar?'↺ Niet afgerond':'✓ Afvinken'}</button>
@@ -2597,6 +2604,12 @@ function toonTaakDetail(blok, t){
   vak.onpointerdown = e=>e.stopPropagation();
   vak.querySelector('[data-dx="sluit"]').onclick = ()=>vak.remove();
   vak.querySelector('[data-dx="opslaan"]').onclick = async ()=>{ const tekst = ta.value.trim(); vak.remove(); if (tekst && tekst!==t.tekst) await updTaak(t.id, { tekst }); };
+  // duur, tijd en gebied direct wijzigen
+  vak.querySelector('[data-dx="duur"]').onchange = e=>{ vak.remove(); updTaak(t.id, { duur_min:Number(e.target.value) }); toast(`⏱ ${t.tekst}: ${fmtDuur(Number(e.target.value))}`); };
+  vak.querySelector('[data-dx="tijd"]').onchange = e=>{
+    if (state.takenTijd === false) { toast('Een vaste tijd werkt pas na migratie-taaktijd.sql in Supabase'); return; }
+    vak.remove(); updTaak(t.id, { tijd:e.target.value }); };
+  vak.querySelector('[data-dx="gebied"]').onchange = e=>{ vak.remove(); updTaak(t.id, { gebied:e.target.value }); };
   vak.querySelector('[data-dx="klaar"]').onclick = ()=>{ vak.remove(); toggleTaak(t.id, !t.klaar); };
   vak.querySelector('[data-dx="door"]')?.addEventListener('click', ()=>{ vak.remove(); schuifDoor([t.id], naar); });
   vak.querySelector('[data-dx="erbij"]')?.addEventListener('click', ()=>{
