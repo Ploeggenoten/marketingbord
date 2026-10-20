@@ -2317,9 +2317,17 @@ function klikNieuweTaak(el){
   el.querySelectorAll('.tr-dag[data-trdag]').forEach(kol=>{
     kol.onclick = e=>{
       if (e.target.closest('.tr-blok, .tr-nieuw, .tr-detail') || Date.now() - _sleepEind < 400) return;
-      el.querySelector('.tr-nieuw')?.remove();
       const y = e.clientY - kol.getBoundingClientRect().top;
       const min = Math.max(ROOSTER[0]*60, Math.min(ROOSTER[1]*60 - STAP, Math.floor((ROOSTER[0]*60 + y/UUR_PX*60) / STAP) * STAP));
+      openNieuweTaak(kol, min);
+    };
+  });
+}
+// Invulvak voor een nieuwe taak op een tijdstip (ook als daar al een taak staat — die komen dan naast elkaar)
+function openNieuweTaak(kol, min){
+  {
+    {
+      document.querySelector('.tr-nieuw')?.remove();
       const datum = kol.dataset.trdag, tijd = tStr(min);
       let gb = dsGebied;
       const v2 = state.takenV2 !== false;
@@ -2350,8 +2358,8 @@ function klikNieuweTaak(el){
       vak.querySelector('.tr-nieuw-weg').onclick = ()=>vak.remove();
       inp.onkeydown = ev=>{ if (ev.key==='Enter') opslaan(); if (ev.key==='Escape') vak.remove(); };
       inp.focus();
-    };
-  });
+    }
+  }
 }
 // ── Teams/Outlook-agenda: taken uit het bord als afspraken in je eigen agenda (Bryan, 19 okt 2026) ──
 // Hergebruikt de app-registratie "Ploeggenoten CRM" (single tenant, Calendars.ReadWrite met
@@ -2479,7 +2487,8 @@ function toonTaakDetail(blok, t){
       <button class="qbtn" data-dx="klaar">${t.klaar?'↺ Niet afgerond':'✓ Afvinken'}</button>
       ${t.klaar?'':`<button class="qbtn" data-dx="door">→ ${DAGNAMEN[new Date(naar+'T12:00:00').getDay()]}</button>`}
       <button class="qbtn" data-dx="weg" style="color:var(--red)">Verwijderen</button>
-    </div>`;
+    </div>
+    ${b?`<button class="qbtn" data-dx="erbij" style="align-self:flex-start">＋ Nog een taak om ${tStr(b.van)}</button>`:''}`;
   kol.appendChild(vak);
   const ta = vak.querySelector('textarea');
   ta.style.height = Math.min(220, ta.scrollHeight + 4) + 'px';
@@ -2489,6 +2498,13 @@ function toonTaakDetail(blok, t){
   vak.querySelector('[data-dx="opslaan"]').onclick = async ()=>{ const tekst = ta.value.trim(); vak.remove(); if (tekst && tekst!==t.tekst) await updTaak(t.id, { tekst }); };
   vak.querySelector('[data-dx="klaar"]').onclick = ()=>{ vak.remove(); toggleTaak(t.id, !t.klaar); };
   vak.querySelector('[data-dx="door"]')?.addEventListener('click', ()=>{ vak.remove(); schuifDoor([t.id], naar); });
+  vak.querySelector('[data-dx="erbij"]')?.addEventListener('click', ()=>{
+    vak.remove();
+    if (state.takenTijd === false) { toast('Een taak op een vaste tijd werkt pas na migratie-taaktijd.sql in Supabase'); return; }
+    // stond deze taak nog niet vast, zet hem dan vast op zijn huidige tijd — anders duwt de nieuwe hem weg
+    const pin = t.tijd ? Promise.resolve() : updTaak(t.id, { tijd: tStr(b.van) });
+    pin.then(()=>{ const k = document.querySelector(`.tr-dag[data-trdag="${t.datum}"]`); if (k) openNieuweTaak(k, b.van); });
+  });
   vak.querySelector('[data-dx="weg"]').onclick = ()=>{ if (confirm(`"${t.tekst}" verwijderen?`)) { vak.remove(); delTaak(t.id); } };
   ta.onkeydown = e=>{ if (e.key==='Escape') vak.remove(); };
   const sluitBuiten = e=>{ if (!vak.contains(e.target)) { vak.remove(); document.removeEventListener('pointerdown', sluitBuiten, true); } };
