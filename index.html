@@ -103,8 +103,7 @@ nav.fases{background:#20301a;border-bottom:1px solid #33421f;padding:0 18px;disp
 .tr-taak input{width:12px;height:12px;margin:0 4px 0 0;vertical-align:-2px;accent-color:#6b9a2f;cursor:pointer}
 .tr-lunch{position:absolute;left:0;right:0;background:repeating-linear-gradient(135deg,#f3f4ee 0 6px,#eceee4 6px 12px);font-size:10px;color:var(--muted);padding:2px 6px;box-sizing:border-box}
 .tr-dag{cursor:copy}
-.tr-nieuw{position:absolute;left:2px;z-index:6;width:250px;max-width:calc(100vw - 40px);background:#fff;border:2px solid #2f8f5b;border-radius:10px;padding:8px;box-shadow:0 8px 24px rgba(0,0,0,.2);display:flex;flex-direction:column;gap:6px;cursor:default}
-.tr-dag:nth-last-child(-n+2) .tr-nieuw{left:auto;right:2px}
+.tr-nieuw{position:fixed;z-index:60;width:250px;max-width:calc(100vw - 40px);background:#fff;border:2px solid #2f8f5b;border-radius:10px;padding:8px;box-shadow:0 8px 24px rgba(0,0,0,.2);display:flex;flex-direction:column;gap:6px;cursor:default}
 .tr-nieuw-kop{font-size:11.5px;font-weight:800;color:#2f8f5b}
 .tr-nieuw-tekst{border:1px solid var(--line);border-radius:7px;padding:6px 8px;font:inherit;font-size:13px}
 .tr-nieuw-geb{display:flex;gap:4px;flex-wrap:wrap}
@@ -112,8 +111,7 @@ nav.fases{background:#20301a;border-bottom:1px solid #33421f;padding:0 18px;disp
 .tr-nieuw-knoppen{display:flex;gap:6px;align-items:center}
 .tr-nieuw-knoppen select{padding:5px 6px;border:1px solid var(--line);border-radius:7px;font:inherit;font-size:12px;background:#fff}
 .tr-nieuw-ok{padding:6px 12px !important;font-size:12.5px !important}
-.tr-detail{position:absolute;left:2px;z-index:7;width:290px;max-width:calc(100vw - 40px);background:#fff;border:1px solid var(--line);border-left:5px solid var(--gc);border-radius:10px;padding:9px 10px;box-shadow:0 10px 28px rgba(0,0,0,.22);display:flex;flex-direction:column;gap:7px;cursor:default}
-.tr-dag:nth-last-child(-n+2) .tr-detail{left:auto;right:2px}
+.tr-detail{position:fixed;z-index:61;width:290px;max-width:calc(100vw - 40px);background:#fff;border:1px solid var(--line);border-left:5px solid var(--gc);border-radius:10px;padding:9px 10px;box-shadow:0 10px 28px rgba(0,0,0,.22);display:flex;flex-direction:column;gap:7px;cursor:default}
 .tr-detail-kop{display:flex;justify-content:space-between;align-items:center;font-size:11.5px;font-weight:800;color:var(--muted)}
 .tr-detail-tekst{border:1px solid var(--line);border-radius:7px;padding:7px 9px;font:inherit;font-size:13.5px;line-height:1.4;resize:vertical;min-height:52px}
 .tr-detail-info{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
@@ -2445,6 +2443,16 @@ function klikNieuweTaak(el){
     };
   });
 }
+// Zet een venstertje naast het aangeklikte tijdstip en houd het helemaal binnen beeld
+function plaatsVenster(vak, x, y){
+  document.body.appendChild(vak);
+  const r = vak.getBoundingClientRect(), m = 8;
+  vak.style.left = Math.max(m, Math.min(x, innerWidth - r.width - m)) + 'px';
+  vak.style.top  = Math.max(m, Math.min(y, innerHeight - r.height - m)) + 'px';
+  // scrollt de pagina, dan sluit het venster (anders zweeft het los van het rooster)
+  const weg = ()=>{ vak.remove(); removeEventListener('scroll', weg, true); };
+  setTimeout(()=>addEventListener('scroll', e=>{ if (!vak.contains(e.target)) weg(); }, { capture:true, once:true }), 50);
+}
 // Invulvak voor een nieuwe taak op een tijdstip (ook als daar al een taak staat — die komen dan naast elkaar)
 function openNieuweTaak(kol, min){
   {
@@ -2455,7 +2463,6 @@ function openNieuweTaak(kol, min){
       const v2 = state.takenV2 !== false;
       const vak = document.createElement('div');
       vak.className = 'tr-nieuw';
-      vak.style.top = rY(min) + 'px';
       vak.innerHTML = `<div class="tr-nieuw-kop">🕑 ${dagLabel(datum)} · ${tijd}</div>
         <input type="text" class="tr-nieuw-tekst" placeholder="Wat ga je doen?">
         ${v2?`<div class="tr-nieuw-geb">${GEBIEDEN.map(g=>`<button class="kchip${g.k===gb?' on':''}" data-ng="${g.k}" style="--kc:${g.c}">${esc(g.kort)}</button>`).join('')}</div>`:''}
@@ -2464,7 +2471,7 @@ function openNieuweTaak(kol, min){
           <button class="bigbtn tr-nieuw-ok">Inplannen</button>
           <button class="qbtn tr-nieuw-weg" title="Annuleren (Esc)">✕</button>
         </div>`;
-      kol.appendChild(vak);
+      { const kr = kol.getBoundingClientRect(); plaatsVenster(vak, kr.left + 2, kr.top + rY(min)); }
       const inp = vak.querySelector('.tr-nieuw-tekst');
       vak.onclick = ev=>ev.stopPropagation();
       vak.onpointerdown = ev=>ev.stopPropagation();
@@ -2479,7 +2486,7 @@ function openNieuweTaak(kol, min){
       vak.querySelector('.tr-nieuw-ok').onclick = opslaan;
       vak.querySelector('.tr-nieuw-weg').onclick = ()=>vak.remove();
       inp.onkeydown = ev=>{ if (ev.key==='Enter') opslaan(); if (ev.key==='Escape') vak.remove(); };
-      inp.focus();
+      inp.focus({ preventScroll:true });
     }
   }
 }
@@ -2599,7 +2606,6 @@ function toonTaakDetail(blok, t){
   const naar = volgendeWerkdag(t.datum);
   const vak = document.createElement('div');
   vak.className = 'tr-detail';
-  vak.style.top = blok.style.top;
   vak.style.setProperty('--gc', g.c);
   vak.innerHTML = `<div class="tr-detail-kop"><span>${dagLabel(t.datum)}${b?` · ${tStr(b.van)}–${tStr(b.tot)}`:''}${t.tijd?' · vaste tijd':''}</span><button class="qbtn" data-dx="sluit" title="Sluiten (Esc)">✕</button></div>
     <textarea class="tr-detail-tekst" rows="3">${esc(t.tekst)}</textarea>
@@ -2616,7 +2622,7 @@ function toonTaakDetail(blok, t){
       <button class="qbtn" data-dx="weg" style="color:var(--red)">Verwijderen</button>
     </div>
     ${b?`<button class="qbtn" data-dx="erbij" style="align-self:flex-start">＋ Nog een taak om ${tStr(b.van)}</button>`:''}`;
-  kol.appendChild(vak);
+  { const br = blok.getBoundingClientRect(); plaatsVenster(vak, br.left, br.top); }
   const ta = vak.querySelector('textarea');
   ta.style.height = Math.min(220, ta.scrollHeight + 4) + 'px';
   vak.onclick = e=>e.stopPropagation();
