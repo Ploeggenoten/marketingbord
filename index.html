@@ -225,6 +225,10 @@ nav.fases{background:#20301a;border-bottom:1px solid #33421f;padding:0 18px;disp
 .sr-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:16px;margin-top:10px;font-size:12.5px}
 .sr-grid ul{margin:4px 0 10px;padding-left:18px}.sr-grid li{margin:3px 0}
 .sr-grid table{font-size:12px;margin:4px 0}
+.vid-camp td{background:var(--dark,#141A0B);color:#C8F135;font-family:Anton,sans-serif;letter-spacing:.04em;text-transform:uppercase;font-size:13px;padding:7px 10px!important;text-align:left}
+.vid-set td{background:rgba(200,241,53,.13);border-top:2px solid rgba(20,26,11,.25)}
+.vid-ad td:first-child{padding-left:30px!important;position:relative}
+.vid-ad td:first-child::before{content:"";position:absolute;left:14px;top:0;bottom:50%;width:9px;border-left:1.5px solid rgba(20,26,11,.3);border-bottom:1.5px solid rgba(20,26,11,.3)}
 .vid-curve{display:inline-flex;align-items:flex-end;gap:2px;height:24px}
 .vid-curve i{width:7px;background:#6fa03c;border-radius:2px 2px 0 0}
 .cptabel td small{display:block}
@@ -1670,6 +1674,30 @@ function videoHtml(){
   const tijd = s => { s = Math.round(s); return `${String(Math.floor(s/60)).padStart(2,'0')}:${String(s%60).padStart(2,'0')}`; };
   // kijkcurve: van 3 sec naar 95% als balkjes, zodat je in één oogopslag ziet waar mensen afhaken
   const curve = v => `<span class="vid-curve" title="Van wie 3 sec keek: ${[['25%',v.p25],['50%',v.p50],['75%',v.p75],['95%',v.p95]].map(([t,n])=>`${t}: ${pc(n/v.v3)}`).join(' · ')}">${[v.v3,v.p25,v.p50,v.p75,v.p95].map(n=>`<i style="height:${Math.max(2,Math.round(n/v.v3*22))}px"></i>`).join('')}</span>`;
+  const cellen = v => `
+          <td${meter('hookrate', v.imp?v.v3/v.imp:null)||' class="rr"'}><b>${v.imp?pc(v.v3/v.imp):'—'}</b></td>
+          <td class="rr">${nr(v.v3)}</td><td class="rr">${nr(v.p25)}</td><td class="rr">${nr(v.p50)}</td><td class="rr">${nr(v.p75)}</td><td class="rr">${nr(v.p95)}</td>
+          <td>${curve(v)}</td>
+          <td class="rr">${nr(v.tp)}</td>
+          <td${meter('vasthoud', v.v3?v.tp/v.v3:null)||' class="rr"'}>${v.v3?pc(v.tp/v.v3):'—'}</td>
+          <td class="rr">${v.plays?tijd(v.sec/v.plays):'—'}</td>
+          <td${meter('ctr', v.imp?v.lk/v.imp:null)||' class="rr"'}>${v.imp?pc(v.lk/v.imp):'—'}</td>
+          <td class="rr"><b>${nr(v.leads)}</b></td>`;
+  // per advertentie: gegroepeerd onder campagne › advertentieset, met het totaal van de set als kopregel
+  let lijstHtml;
+  if (_vidPer==='campagne') lijstHtml = lijst.map(v=>`<tr><td style="text-align:left"><b>${esc(v.campagne)}</b></td>${cellen(v)}</tr>`).join('');
+  else {
+    const sets = {};
+    lijst.forEach(v=>{ const g = sets[v.campagne+'|'+v.set] ??= { campagne:v.campagne, set:v.set, ads:[], imp:0, v3:0, p25:0, p50:0, p75:0, p95:0, tp:0, plays:0, sec:0, lk:0, leads:0 };
+      g.ads.push(v); ['imp','v3','p25','p50','p75','p95','tp','plays','sec','lk','leads'].forEach(k=>g[k]+=v[k]); });
+    const groepen = Object.values(sets).sort((a,b)=>a.campagne.localeCompare(b.campagne,'nl') || b.v3-a.v3);
+    lijstHtml = groepen.map((g,i)=>{
+      const nieuweCamp = i===0 || groepen[i-1].campagne!==g.campagne;
+      return `${nieuweCamp?`<tr class="vid-camp"><td colspan="13">${esc(g.campagne)}</td></tr>`:''}
+        <tr class="vid-set"><td style="text-align:left">📂 <b>${esc(g.set||'(geen set)')}</b> <small style="display:inline">· ${g.ads.length} video${g.ads.length>1?"'s":''}</small></td>${cellen(g)}</tr>
+        ${g.ads.map(v=>`<tr class="vid-ad"><td style="text-align:left">${esc(v.ad)}</td>${cellen(v)}</tr>`).join('')}`;
+    }).join('');
+  }
   return `<div class="inzbox" style="grid-column:1/-1">
     <h4 style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">🎬 Video-prestaties
       <span class="cp-filters">
@@ -1680,16 +1708,7 @@ function videoHtml(){
     <div style="overflow-x:auto"><table class="itable cptabel">
       <thead><tr><th style="text-align:left">${_vidPer==='campagne'?'Campagne':'Advertentie'}</th><th class="rr" title="3-sec-weergaven ÷ weergaven (hook rate)">% videoweergaven 3 sec</th><th class="rr">Videoweergaven 3 sec</th><th class="rr">Tot 25%</th><th class="rr">Tot 50%</th><th class="rr">Tot 75%</th><th class="rr">Tot 95%</th><th>Kijkcurve</th><th class="rr">ThruPlays (15 sec)</th><th class="rr" title="ThruPlays ÷ 3-sec-weergaven">Vasthoudrate</th><th class="rr">Gem. kijktijd</th><th class="rr">CTR (link)</th><th class="rr">Resultaten</th></tr></thead>
       <tbody>${!rijen ? '<tr><td colspan="13" style="text-align:center;color:var(--muted)">Videocijfers ophalen…</td></tr>'
-        : lijst.length ? lijst.map(v=>`<tr>
-          <td style="text-align:left"><b>${esc(_vidPer==='campagne'?v.campagne:v.ad)}</b>${_vidPer==='campagne'?'':`<small>${esc(v.campagne)}${v.set?' › '+esc(v.set):''}</small>`}</td>
-          <td${meter('hookrate', v.imp?v.v3/v.imp:null)||' class="rr"'}><b>${v.imp?pc(v.v3/v.imp):'—'}</b></td>
-          <td class="rr">${nr(v.v3)}</td><td class="rr">${nr(v.p25)}</td><td class="rr">${nr(v.p50)}</td><td class="rr">${nr(v.p75)}</td><td class="rr">${nr(v.p95)}</td>
-          <td>${curve(v)}</td>
-          <td class="rr">${nr(v.tp)}</td>
-          <td${meter('vasthoud', v.v3?v.tp/v.v3:null)||' class="rr"'}>${v.v3?pc(v.tp/v.v3):'—'}</td>
-          <td class="rr">${v.plays?tijd(v.sec/v.plays):'—'}</td>
-          <td${meter('ctr', v.imp?v.lk/v.imp:null)||' class="rr"'}>${v.imp?pc(v.lk/v.imp):'—'}</td>
-          <td class="rr"><b>${nr(v.leads)}</b></td></tr>`).join('')
+        : lijst.length ? lijstHtml
         : '<tr><td colspan="13" style="text-align:center;color:var(--muted)">Geen videoweergaven in deze periode.</td></tr>'}</tbody>
     </table></div>
   </div>`;
