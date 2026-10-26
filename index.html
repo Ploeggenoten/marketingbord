@@ -1361,15 +1361,22 @@ function agentAdviezen(){
 let _agentBusy = false;
 async function runAgent(){
   if (_agentBusy) return;
-  _agentBusy = true; toast('🤖 Agent leest de cijfers…');
+  _agentBusy = true; toast('🤖 Agent leest de cijfers… (± 2–4 min, je kunt gewoon doorwerken)');
+  const start = new Date(Date.now() - 5000).toISOString();
   try {
+    // ad-guard antwoordt meteen en rekent op de achtergrond door; het rapport verschijnt in mkt_agent_rapport
     const { data, error } = await sb.functions.invoke('ad-guard?force=1');
-    if (error || data?.error) toast('⚠ ' + (data?.error || error?.message || 'agent-run mislukt'));
-    else {
-      await loadFromDB(); render();
-      _arIndex = 0;
-      toast(data.melding ? `🤖 ${data.melding}` : data.waarschuwingen!=null ? `🤖 Nieuw advies: ${data.waarschuwingen} punten${data.uitgevoerd?.length?' · uitgevoerd: '+data.uitgevoerd.join(', '):''}` : `🤖 Klaar`);
+    if (error || data?.error) { toast('⚠ ' + (data?.error || error?.message || 'agent-run mislukt')); _agentBusy = false; return; }
+    for (let i = 0; i < 48; i++) {   // max 8 minuten
+      await new Promise(r => setTimeout(r, 10000));
+      const { data: nieuw } = await sb.from('mkt_agent_rapport').select('id,rapport').gt('created_at', start).limit(1);
+      if (!nieuw?.length) continue;
+      await loadFromDB(); _arIndex = 0; render();
+      const a = nieuw[0].rapport || {};
+      toast(a.fout ? '⚠ Agent-run mislukt: ' + a.fout : `🤖 Nieuw advies: ${(a.waarschuwingen||[]).length} punten`);
+      _agentBusy = false; return;
     }
+    toast('⚠ Na 8 minuten nog geen advies — probeer het later opnieuw');
   } catch(e) { toast('⚠ Agent niet bereikbaar'); }
   _agentBusy = false;
 }
@@ -1383,8 +1390,9 @@ function agentRapportHtml(){
   const kop = `<h4 style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">🧠 Advies van de agent
       <span class="cp-filters">${R.length>1?`<select id="ar_kies" class="cp-periode">${R.map((r,i)=>`<option value="${i}"${i===_arIndex?' selected':''}>${new Date(r.created_at).toLocaleString('nl-NL',{weekday:'short',day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'})}${i===0?' (nieuwste)':''}</option>`).join('')}</select>`:''}
         <button class="qbtn" id="ar_run">🤖 Nieuw advies maken</button></span></h4>`;
-  if (!R.length) return `<div class="inzbox" style="grid-column:1/-1">${kop}<div class="toel" style="margin:0">Nog geen advies. De agent draait elke dag om 08:00 en 14:00, of klik op <b>Nieuw advies maken</b> (duurt ± 1–2 minuten).</div></div>`;
+  if (!R.length) return `<div class="inzbox" style="grid-column:1/-1">${kop}<div class="toel" style="margin:0">Nog geen advies. De agent draait elke dag om 08:00 en 14:00, of klik op <b>Nieuw advies maken</b> (duurt ± 2–4 minuten).</div></div>`;
   const rij = R[Math.min(_arIndex, R.length-1)], a = rij.rapport || {};
+  if (a.fout) return `<div class="inzbox" style="grid-column:1/-1">${kop}<div class="toel" style="margin:0">⚠ Deze run is mislukt: ${esc(a.fout)}</div></div>`;
   const waar = w => [w.campagne, w.advertentieset, w.advertentie].filter(Boolean).map(esc).join(' › ');
   const kaart = (w, i) => `<div class="ar-kaart ar-${(AR_NIVEAU[w.niveau]||[])[2]||'grijs'}">
       <div class="ar-kaartkop"><span class="ar-oordeel ar-${AR_OORDEEL[w.oordeel]||'grijs'}">${esc(w.oordeel)}</span><b>${waar(w)}</b></div>

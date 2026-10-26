@@ -70,6 +70,8 @@ function zToets(x1: number, n1: number, x2: number, n2: number) {
   return { z: r2(z, 2), significant: Math.abs(z) >= 1.96 };
 }
 
+declare const EdgeRuntime: { waitUntil(p: Promise<unknown>): void };
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: cors });
   try {
@@ -83,6 +85,9 @@ Deno.serve(async (req) => {
       if (!user) return json({ error: "geen toegang — log in" }, 403);
     }
     const db = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
+    // Een run duurt ± 2–4 min, maar de verbinding mag maar 150 s stil zijn (IDLE_TIMEOUT). Daarom meteen
+    // antwoorden en de analyse op de achtergrond afmaken; mislukt hij, dan komt de fout als rapport in het bord.
+    const run = (async (): Promise<Response> => {
     const apiKey = Deno.env.get("ANTHROPIC_API_KEY");
     if (!apiKey) return json({ error: "ANTHROPIC_API_KEY nog niet ingesteld als secret" }, 500);
     const token = Deno.env.get("META_ACCESS_TOKEN")!;
@@ -278,6 +283,13 @@ Geldbedragen met €-teken en komma (€4,26), percentages met komma (1,68%). Kl
 
     const { error: re } = await db.from("mkt_agent_rapport").insert({ rapport, uitgevoerd, model: "claude-opus-5-5" });
     return json({ ok: true, opgeslagen: !re, fout_opslaan: re?.message, autoStop, autoBudget, waarschuwingen: rapport.waarschuwingen.length, uitgevoerd });
+    })().catch((e) => json({ error: String(e) }, 500));
+    EdgeRuntime.waitUntil(run.then(async (res) => {
+      if (res.ok) return;
+      const b = await res.json().catch(() => ({}));
+      await db.from("mkt_agent_rapport").insert({ rapport: { fout: b.error ?? `status ${res.status}` }, model: "claude-opus-5-5" });
+    }));
+    return json({ ok: true, gestart: true }, 202);
   } catch (e) {
     return json({ error: String(e) }, 500);
   }
