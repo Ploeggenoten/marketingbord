@@ -190,6 +190,8 @@ nav.fases{background:#20301a;border-bottom:1px solid #33421f;padding:0 18px;disp
 .cp-stip{display:inline-block;width:12px;height:12px;border-radius:50%;background:#c7ccb8}
 .cp-stip.aan{background:#2f8f5b;box-shadow:0 0 0 3px #d9efe1}
 .qbtn.aan{background:#2f8f5b;color:#fff;border-color:#2f8f5b}
+.cp-periode,#cp_van,#cp_tot{font:inherit;font-size:12.5px;padding:5px 8px;border:1px solid var(--line);border-radius:8px;background:#fff}
+.cp-bereik{font-size:12px;color:var(--muted);font-weight:600}
 /* Contentplanning: twee banen per week */
 .pweek{margin-bottom:12px}
 .pgrid{display:grid;grid-template-columns:170px repeat(7,minmax(0,1fr))}
@@ -1378,26 +1380,63 @@ function learningsLijstHtml(){
 }
 
 // ── Campagne-overzicht bovenaan Prestatie, met dezelfde kolommen als Ads Manager (Bryan, 26 okt 2026) ──
-let _cpPeriode = 'd7', _cpAlleenAan = true, _cpSort = 'besteed';
-const CP_PERIODES = { vandaag:'Vandaag', d7:'Laatste 7 dagen', d30:'Laatste 30 dagen' };
+let _cpPeriode = 'd7', _cpAlleenAan = true, _cpSort = 'besteed', _cpVan = '', _cpTot = '';
+// Snelle keuzes zoals in Ads Manager. 'meta' = Meta levert deze periode kant-en-klaar (incl. frequentie).
+const CP_PERIODES = {
+  vandaag:{ t:'Vandaag', meta:true }, gisteren:{ t:'Gisteren' }, d7:{ t:'Afgelopen 7 dagen', meta:true },
+  d14:{ t:'Afgelopen 14 dagen' }, d30:{ t:'Afgelopen 30 dagen', meta:true }, maand:{ t:'Deze maand' },
+  vorigemaand:{ t:'Vorige maand' }, eigen:{ t:'Zelf kiezen…' } };
+function cpBereik(){
+  const t = todayISO(), dag = n => isoDaysAgo(n);
+  const nu = new Date(), eersteDit = isoLokaal(new Date(nu.getFullYear(), nu.getMonth(), 1));
+  const eersteVorig = isoLokaal(new Date(nu.getFullYear(), nu.getMonth()-1, 1)), laatsteVorig = isoLokaal(new Date(nu.getFullYear(), nu.getMonth(), 0));
+  return ({ vandaag:[t,t], gisteren:[dag(1),dag(1)], d7:[dag(7),dag(1)], d14:[dag(14),dag(1)], d30:[dag(30),dag(1)],
+    maand:[eersteDit,t], vorigemaand:[eersteVorig,laatsteVorig], eigen:[_cpVan||dag(7), _cpTot||dag(1)] })[_cpPeriode];
+}
+const _cpCache = {};   // 'van|tot' → dagregels uit mkt_meta_stats (of 'laden')
+async function cpLaad(van, tot){
+  const k = van+'|'+tot; if (_cpCache[k]) return;
+  _cpCache[k] = 'laden';
+  const rijen = [];
+  for (let i = 0; i < 20000; i += 1000) {   // in stukken van 1000 (maximum per verzoek)
+    const { data, error } = await sb.from('mkt_meta_stats').select('datum,campagne,uitgegeven,impressies,kliks,link_kliks,leads')
+      .gte('datum', van).lte('datum', tot).order('datum').range(i, i+999);
+    if (error) break;
+    rijen.push(...(data||[])); if (!data || data.length < 1000) break;
+  }
+  _cpCache[k] = rijen;
+  if (view==='prestatie') render();
+}
 function campagneRijen(){
-  // Volledige gegevens uit mkt_meta_campagnes (nieuwe meta-sync); anders terugval op mkt_meta_stats.
-  if (state.campagnes?.length) return { volledig:true, rijen: state.campagnes.map(c=>({ ...c, ...(c.cijfers?.[_cpPeriode]||{}) })) };
-  const vanaf = _cpPeriode==='vandaag' ? todayISO() : isoDaysAgo(_cpPeriode==='d7' ? 6 : 29);
+  const meta = state.campagnes?.length ? state.campagnes : null;
+  // Kant-en-klare Meta-cijfers als die er zijn voor deze periode
+  if (meta && CP_PERIODES[_cpPeriode].meta) {
+    const sleutel = _cpPeriode==='vandaag' ? 'vandaag' : _cpPeriode;
+    return { volledig:true, rijen: meta.map(c=>({ ...c, ...(c.cijfers?.[sleutel]||{}) })) };
+  }
+  // Anders: optellen uit de dagcijfers voor precies de gekozen periode
+  const [van, tot] = cpBereik(), k = van+'|'+tot;
+  if (!_cpCache[k]) cpLaad(van, tot);
+  if (!Array.isArray(_cpCache[k])) return { volledig:!!meta, laden:true, rijen:[] };
   const per = {};
-  (state.meta||[]).filter(r=>(r.datum||'')>=vanaf).forEach(r=>{
+  _cpCache[k].forEach(r=>{
     const c = per[r.campagne||'—'] ??= { naam:r.campagne||'—', besteed:0, weergaven:0, link_kliks:0, resultaten:0, _alleKliks:0 };
     c.besteed += +r.uitgegeven||0; c.weergaven += +r.impressies||0; c.resultaten += +r.leads||0;
     c.link_kliks += +r.link_kliks||0; c._alleKliks += +r.kliks||0;
   });
-  const rijen = Object.values(per).map(c=>{ const k = c.link_kliks || c._alleKliks;
-    return { ...c, aan:null, link_kliks:k, ctr: c.weergaven ? k/c.weergaven : null, cpc: k ? c.besteed/k : null,
-      cpl: c.resultaten ? c.besteed/c.resultaten : null, cpm: c.weergaven ? c.besteed/c.weergaven*1000 : null }; });
-  return { volledig:false, rijen };
+  // status, budget en id (huidige stand) erbij uit het campagne-overzicht
+  if (meta) meta.forEach(m=>{ if (!per[m.naam]) per[m.naam] = { naam:m.naam, besteed:0, weergaven:0, link_kliks:0, resultaten:0, _alleKliks:0 }; });
+  const rijen = Object.values(per).map(c=>{
+    const m = meta?.find(x=>x.naam===c.naam), k2 = c.link_kliks || c._alleKliks;
+    return { ...c, aan: m ? m.aan : null, status: m?.status, budget_dag: m?.budget_dag, budget_type: m?.budget_type, budget_looptijd: m?.budget_looptijd, id: m?.id,
+      link_kliks:k2, frequentie:null, ctr: c.weergaven ? k2/c.weergaven : null, cpc: k2 ? c.besteed/k2 : null,
+      cpl: c.resultaten ? c.besteed/c.resultaten : null, cpm: c.weergaven ? c.besteed/c.weergaven*1000 : null };
+  });
+  return { volledig:!!meta, rijen };
 }
 function campagneOverzichtHtml(){
-  const { volledig, rijen:alle } = campagneRijen();
-  if (!alle.length) return '';
+  const { volledig, rijen:alle, laden } = campagneRijen();
+  if (!alle.length && !laden && !(state.meta||[]).length) return '';
   const rijen = alle.filter(c=>!volledig || !_cpAlleenAan || c.aan).sort((a,b)=>(+b[_cpSort]||0)-(+a[_cpSort]||0));
   const som = k => rijen.reduce((t,c)=>t+(+c[k]||0),0);
   const tot = { besteed:som('besteed'), weergaven:som('weergaven'), link_kliks:som('link_kliks'), resultaten:som('resultaten') };
@@ -1409,13 +1448,15 @@ function campagneOverzichtHtml(){
   return `<div class="inzbox" style="grid-column:1/-1">
     <h4 style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">📣 Lopende campagnes
       <span style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">
-        ${Object.entries(CP_PERIODES).map(([k,t])=>`<button class="qbtn${_cpPeriode===k?' aan':''}" data-cpper="${k}">${t}</button>`).join('')}
+        <select id="cp_periode" class="cp-periode">${Object.entries(CP_PERIODES).map(([k,x])=>`<option value="${k}"${_cpPeriode===k?' selected':''}>${x.t}</option>`).join('')}</select>
+        ${_cpPeriode==='eigen'?`<input type="date" id="cp_van" value="${cpBereik()[0]}" max="${todayISO()}"> t/m <input type="date" id="cp_tot" value="${cpBereik()[1]}" max="${todayISO()}">`:''}
+        <span class="cp-bereik">📅 ${fmtD(cpBereik()[0])}${cpBereik()[0]!==cpBereik()[1]?' – '+fmtD(cpBereik()[1]):''}</span>
         ${volledig?`<label style="font-size:12px;font-weight:600;display:flex;gap:5px;align-items:center"><input type="checkbox" id="cp_aan" ${_cpAlleenAan?'checked':''}> alleen wat aanstaat</label>`:''}
       </span></h4>
     ${volledig?'':`<div class="toel" style="margin:0 0 8px">Status aan/uit, budget, frequentie en campagne-ID verschijnen zodra de nieuwe Meta-sync in Supabase staat (met <b>migratie-campagnes.sql</b>). Tot dan rekent CTR/CPC met alle klikken.</div>`}
     <div style="overflow-x:auto"><table class="itable cptabel">
       <thead><tr><th>Uit/aan</th><th style="text-align:left">Campagne</th><th class="rr">Budget</th>${kop('resultaten','Resultaten')}${kop('besteed','Besteed bedrag')}${kop('weergaven','Weergaven')}${kop('ctr','CTR (link)')}${kop('cpc','CPC (link)')}${kop('cpl','Kosten per resultaat')}${kop('cpm','CPM')}${kop('frequentie','Frequentie')}${kop('link_kliks','Klikken op links')}<th class="rr">Campagne-ID</th></tr></thead>
-      <tbody>${rijen.map(c=>`<tr>
+      <tbody>${laden ? '<tr><td colspan="13" style="text-align:center;color:var(--muted)">Cijfers voor deze periode ophalen…</td></tr>' : rijen.length ? '' : '<tr><td colspan="13" style="text-align:center;color:var(--muted)">Geen advertentie-uitgaven in deze periode.</td></tr>'}${rijen.map(c=>`<tr>
         <td>${c.aan==null?'—':`<span class="cp-stip ${c.aan?'aan':'uit'}" title="${esc(c.status||'')}"></span>`}</td>
         <td style="text-align:left"><b>${esc(c.naam)}</b></td>
         <td class="rr">${budget(c)}</td>
@@ -1426,7 +1467,7 @@ function campagneOverzichtHtml(){
         <td class="rr">${eu(c.cpc)}</td>
         <td class="rr">${eu(c.cpl)}</td>
         <td class="rr">${eu(c.cpm)}</td>
-        <td class="rr">${c.frequentie?Number(c.frequentie).toLocaleString('nl-NL',{maximumFractionDigits:2}):'—'}</td>
+        <td class="rr" ${c.frequentie==null&&volledig?'title="Frequentie levert Meta alleen voor vandaag, 7 en 30 dagen"':''}>${c.frequentie?Number(c.frequentie).toLocaleString('nl-NL',{maximumFractionDigits:2}):'—'}</td>
         <td class="rr">${nr(c.link_kliks||0)}</td>
         <td class="rr"><small>${c.id?esc(c.id):'—'}</small></td>
       </tr>`).join('')}</tbody>
@@ -1505,7 +1546,11 @@ function renderPrestatie(){
     </div>
   </div>`;
 
-  el.querySelectorAll('[data-cpper]').forEach(b=>b.onclick=()=>{ _cpPeriode = b.dataset.cpper; render(); });
+  const cpSel = el.querySelector('#cp_periode');
+  if (cpSel) cpSel.onchange = ()=>{ if (cpSel.value==='eigen') { const [v,t] = cpBereik(); _cpVan = v; _cpTot = t; } _cpPeriode = cpSel.value; render(); };
+  const cpVan = el.querySelector('#cp_van'), cpTot = el.querySelector('#cp_tot');
+  if (cpVan) cpVan.onchange = ()=>{ _cpVan = cpVan.value; if (_cpTot && _cpVan > _cpTot) _cpTot = _cpVan; render(); };
+  if (cpTot) cpTot.onchange = ()=>{ _cpTot = cpTot.value; if (_cpVan && _cpTot < _cpVan) _cpVan = _cpTot; render(); };
   el.querySelectorAll('[data-cpsort]').forEach(b=>b.onclick=()=>{ _cpSort = b.dataset.cpsort; render(); });
   const cpAan = el.querySelector('#cp_aan'); if (cpAan) cpAan.onchange = ()=>{ _cpAlleenAan = cpAan.checked; render(); };
   el.querySelectorAll('[data-open]').forEach(u=>u.onclick=()=>openEdit(u.dataset.open));
