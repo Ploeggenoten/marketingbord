@@ -200,6 +200,31 @@ nav.fases{background:#20301a;border-bottom:1px solid #33421f;padding:0 18px;disp
 .cp-filters{display:flex;gap:6px;flex-wrap:wrap;align-items:center;font-family:var(--body);font-weight:400;text-transform:none;letter-spacing:normal;font-size:12.5px;color:var(--muted)}
 .cp-filters label{font-weight:500 !important;color:var(--txt)}
 .cp-periode,#cp_van,#cp_tot{font-weight:400;font:inherit;font-size:12.5px;padding:5px 8px;border:1px solid var(--line);border-radius:8px;background:#fff}
+.ar .ar-oordeelkort{font-size:14px;line-height:1.5;background:#f6f8ef;border-radius:10px;padding:10px 12px;margin-bottom:10px}
+.ar-campagnes{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:6px;margin-bottom:12px}
+.ar-camp{display:flex;flex-wrap:wrap;gap:4px 8px;align-items:baseline;font-size:12.5px;border:1px solid var(--line);border-radius:9px;padding:6px 9px}
+.ar-camp small{flex-basis:100%;color:var(--muted)}
+.ar-oordeel{font-size:10.5px;font-weight:800;text-transform:uppercase;letter-spacing:.03em;border-radius:999px;padding:1px 8px;color:#fff;background:#8a917c}
+.ar-oordeel.ar-groen{background:#2f8f5b}.ar-oordeel.ar-oranje{background:#c98a14}.ar-oordeel.ar-rood{background:var(--red)}
+.ar-groep{margin:10px 0}
+.ar-groepkop{font-weight:800;font-size:13px;margin-bottom:6px}
+.ar-kaart{border:1px solid var(--line);border-left:5px solid #8a917c;border-radius:10px;padding:8px 11px;margin-bottom:7px;font-size:13px;line-height:1.45;display:flex;flex-direction:column;gap:3px}
+.ar-kaart.ar-rood{border-left-color:var(--red);background:#fffafa}.ar-kaart.ar-oranje{border-left-color:#c98a14;background:#fffcf3}.ar-kaart.ar-groen{border-left-color:#2f8f5b;background:#f8fcf9}
+.ar-kaartkop{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.ar-doen{background:#fff;border:1px dashed var(--line);border-radius:7px;padding:4px 8px;margin-top:2px}
+.ar-blok{border:1px solid var(--line);border-radius:10px;padding:8px 11px;margin-top:8px;font-size:13px}
+.ar-blok ul{margin:4px 0 0;padding-left:18px}
+.ar-strat{background:#f4f9e6}.ar-grijs{color:var(--muted)}.ar-vraag{background:#fff8e6}
+.ar-vraag textarea{width:100%;margin-top:6px;border:1px solid var(--line);border-radius:8px;padding:7px 9px;font:inherit;font-size:13px}
+.m-goed{color:#1e6b3f;background:#eaf6ee}
+.m-matig{color:#8a5a00;background:#fff4dc}
+.m-slecht{color:#a3261b;background:#fdeceb}
+.cptabel td.m-goed,.cptabel td.m-matig,.cptabel td.m-slecht{font-weight:700}
+.spelregels{grid-column:1/-1;background:var(--card);border:1px solid var(--line);border-radius:12px;padding:10px 14px}
+.spelregels summary{cursor:pointer;font-weight:700;font-size:13px}
+.sr-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:16px;margin-top:10px;font-size:12.5px}
+.sr-grid ul{margin:4px 0 10px;padding-left:18px}.sr-grid li{margin:3px 0}
+.sr-grid table{font-size:12px;margin:4px 0}
 .vid-curve{display:inline-flex;align-items:flex-end;gap:2px;height:24px}
 .vid-curve i{width:7px;background:#6fa03c;border-radius:2px 2px 0 0}
 .cptabel td small{display:block}
@@ -789,6 +814,8 @@ async function loadFromDB(){
     else if ((v.t||'') > (db.updated_at||'') && v.tekst !== db.tekst) { db.tekst = v.tekst; db._teSturen = true; }
   }
   if (state.notitiesDB) setTimeout(()=>state.notities.filter(n=>n._teSturen && n.tekst.trim()).forEach(n=>{ delete n._teSturen; ntOpslaanLater(n.datum, n.tekst, true); }), 0);
+  const arR = await sb.from('mkt_agent_rapport').select('*').order('created_at',{ascending:false}).limit(15);
+  state.rapporten = arR.error ? null : (arR.data||[]);   // null = tabel bestaat nog niet
   const tR = await sb.from('mkt_taken').select('*').order('datum').order('created_at');
   state.taken = tR.error ? null : (tR.data||[]).filter(t=>t.datum>=STARTDATUM);
   if (state.taken?.length) state.takenTijd = 'tijd' in state.taken[0];
@@ -1323,11 +1350,11 @@ async function toggleConfig(key, vraagAan, meldingAan, meldingUit){
   toast(naar==='aan' ? meldingAan : meldingUit);
 }
 const toggleAutoStop = () => toggleConfig('__auto_stop__',
-  'Auto-stop aanzetten?\n\nDe Claude-agent mag dan zelf advertenties PAUZEREN (nooit verwijderen of budgetten wijzigen) als ze de 2·1·5-kill-trigger raken: minstens €15 besteed en 1.000 keer getoond, en een link-CTR onder 1,5% of link-CPC boven €1. Max 2 per dag, altijd met reden gelogd, en "negeer"-besluiten worden gerespecteerd.',
-  '🤖 Auto-stop AAN — de agent mag falende ads pauzeren', 'Auto-stop UIT — de agent adviseert alleen nog');
+  'Auto-stop aanzetten?\n\nDe agent mag dan zelf advertenties PAUZEREN (nooit verwijderen) als ze de stopregel uit je instructie raken: link-CTR < 1,5% of link-CPC > €1 (na €15 en 1.000 weergaven) ÉN CPL > €10 of 0 leads na €20. Een dure klik met CPL ≤ €10 blijft staan. Max 2 per run, altijd met reden gelogd.',
+  '🤖 Auto-stop AAN — de agent mag advertenties pauzeren die de stopregel raken', 'Auto-stop UIT — de agent adviseert alleen nog');
 const toggleAutoBudget = () => toggleConfig('__auto_budget__',
-  'Auto-budget aanzetten?\n\nDe Claude-agent mag dan zelf dagbudgetten van advertentiesets aanpassen (bijschalen alleen als de set volgens 2·1·5 op schalen staat: op norm, 3+ dagen live, 10+ leads; afschalen bij verliezers). Vangrails: alleen sets met eigen budget (ABO), max ±20% per keer, minimaal €5/dag, maximaal 1 wijziging per set per 48 uur, en het TOTALE dagbudget van het account kan nooit stijgen — het plafond verhogen blijft mensenwerk. Alles wordt met reden gelogd.',
-  '💶 Auto-budget AAN — de agent mag herverdelen binnen het plafond', 'Auto-budget UIT — budget-adviezen zonder uitvoering');
+  'Auto-budget aanzetten?\n\nDe agent mag dan alleen PAUZEREN via budget: het dagbudget van een advertentieset (budget per set) naar €10 zetten als de set een CPL > €10 heeft bij ≥ €50 besteed (7 dagen) en ≥ 3 dagen live is. Hij verhoogt NOOIT een budget — opschalen doe je zelf (extra set van €30 of nieuw concept, en pas na nabelcijfers). Geen wijziging als het budget < 3 dagen geleden al is aangepast.',
+  '💶 Auto-budget AAN — de agent mag slechte sets naar €10 per dag zetten', 'Auto-budget UIT — budget-adviezen zonder uitvoering');
 function agentAdviezen(){
   return state.besluiten.filter(b=>['advies','budget'].includes(b.besluit) && b.status==='open' && !b.advertentie.startsWith('__'));
 }
@@ -1340,10 +1367,62 @@ async function runAgent(){
     if (error || data?.error) toast('⚠ ' + (data?.error || error?.message || 'agent-run mislukt'));
     else {
       await loadFromDB(); render();
-      toast(data.kandidaten===0 || data.melding ? `🤖 ${data.melding || 'Klaar'}` : `🤖 ${data.beoordeeld} beoordeeld, ${data.gestopt} gestopt`);
+      _arIndex = 0;
+      toast(data.melding ? `🤖 ${data.melding}` : data.waarschuwingen!=null ? `🤖 Nieuw advies: ${data.waarschuwingen} punten${data.uitgevoerd?.length?' · uitgevoerd: '+data.uitgevoerd.join(', '):''}` : `🤖 Klaar`);
     }
   } catch(e) { toast('⚠ Agent niet bereikbaar'); }
   _agentBusy = false;
+}
+// ── Advies van de agent (rapport van ad-guard v4, volgens §13 van de instructie) ──
+let _arIndex = 0;
+const AR_NIVEAU = { actie_vandaag:['🔴','Actie vandaag','rood'], let_op:['🟠','Let op','oranje'], goed:['🟢','Goed','groen'], te_vroeg:['⚪','Te vroeg','grijs'] };
+const AR_OORDEEL = { Opschalen:'groen', Houden:'groen', Monitoren:'oranje', Pauzeren:'oranje', Stoppen:'rood', 'Te vroeg':'grijs' };
+function agentRapportHtml(){
+  const R = state.rapporten;
+  if (R === null) return `<div class="inzbox" style="grid-column:1/-1"><h4>🧠 Advies van de agent</h4><div class="toel" style="margin:0">Draai <b>migratie-agent-rapport.sql</b> in Supabase en zet de nieuwe <b>ad-guard</b> live; daarna verschijnt hier na elke run het advies van de agent.</div></div>`;
+  const kop = `<h4 style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">🧠 Advies van de agent
+      <span class="cp-filters">${R.length>1?`<select id="ar_kies" class="cp-periode">${R.map((r,i)=>`<option value="${i}"${i===_arIndex?' selected':''}>${new Date(r.created_at).toLocaleString('nl-NL',{weekday:'short',day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'})}${i===0?' (nieuwste)':''}</option>`).join('')}</select>`:''}
+        <button class="qbtn" id="ar_run">🤖 Nieuw advies maken</button></span></h4>`;
+  if (!R.length) return `<div class="inzbox" style="grid-column:1/-1">${kop}<div class="toel" style="margin:0">Nog geen advies. De agent draait elke dag om 08:00 en 14:00, of klik op <b>Nieuw advies maken</b> (duurt ± 1–2 minuten).</div></div>`;
+  const rij = R[Math.min(_arIndex, R.length-1)], a = rij.rapport || {};
+  const waar = w => [w.campagne, w.advertentieset, w.advertentie].filter(Boolean).map(esc).join(' › ');
+  const kaart = (w, i) => `<div class="ar-kaart ar-${(AR_NIVEAU[w.niveau]||[])[2]||'grijs'}">
+      <div class="ar-kaartkop"><span class="ar-oordeel ar-${AR_OORDEEL[w.oordeel]||'grijs'}">${esc(w.oordeel)}</span><b>${waar(w)}</b></div>
+      <div><b>Reden:</b> ${esc(w.reden)}</div>
+      <div><b>Diagnose:</b> ${esc(w.diagnose)}</div>
+      <div class="ar-doen">👉 <b>Doen:</b> ${esc(w.actie)}</div>
+      <div style="margin-top:6px">${(state.taken||[]).some(t=>t.tekst===arTaakTekst(w)&&!t.klaar)?'<span class="ds-ok">✓ staat in Mijn week</span>':`<button class="qbtn" data-artaak="${i}">＋ als taak in Mijn week</button>`}</div>
+    </div>`;
+  const groepen = Object.keys(AR_NIVEAU).map(n=>{ const ws = (a.waarschuwingen||[]).map((w,i)=>[w,i]).filter(([w])=>w.niveau===n);
+    return ws.length ? `<div class="ar-groep"><div class="ar-groepkop">${AR_NIVEAU[n][0]} ${AR_NIVEAU[n][1]} <small>(${ws.length})</small></div>${ws.map(([w,i])=>kaart(w,i)).join('')}</div>` : ''; }).join('');
+  return `<div class="inzbox ar" style="grid-column:1/-1">${kop}
+    <div class="ar-oordeelkort">${esc(a.kort_oordeel||'')}</div>
+    ${(a.campagnes||[]).length?`<div class="ar-campagnes">${a.campagnes.map(c=>`<div class="ar-camp"><span class="ar-oordeel ar-${AR_OORDEEL[c.oordeel]||'grijs'}">${esc(c.oordeel)}</span><b>${esc(c.campagne)}</b><small>${esc(c.toelichting||'')}</small></div>`).join('')}</div>`:''}
+    ${groepen}
+    ${a.strategisch_punt?`<div class="ar-blok ar-strat"><b>💡 Strategisch punt van de week</b><div>${esc(a.strategisch_punt)}</div></div>`:''}
+    ${(rij.uitgevoerd||[]).length?`<div class="ar-blok"><b>⚙️ Automatisch uitgevoerd</b><ul>${rij.uitgevoerd.map(x=>`<li>${esc(x)}</li>`).join('')}</ul></div>`:''}
+    ${(a.niet_beoordeeld||[]).length?`<div class="ar-blok ar-grijs"><b>Niet kunnen beoordelen</b><ul>${a.niet_beoordeeld.map(x=>`<li>${esc(x)}</li>`).join('')}</ul></div>`:''}
+    ${a.vraag?`<div class="ar-blok ar-vraag"><b>❓ Vraag van de agent</b><div>${esc(a.vraag)}</div>
+      <textarea id="ar_antwoord" rows="3" placeholder="Jouw antwoord, bijv. nabelcijfers: 'Staalduinen: 12 nagebeld, 4 geschikt (2 geen vervoer, …)'">${esc(rij.antwoord||'')}</textarea>
+      <div style="display:flex;gap:8px;align-items:center;margin-top:5px"><button class="qbtn" id="ar_opslaan">Antwoord opslaan</button>
+      <small style="color:var(--muted)">${rij.antwoord_op?'✓ opgeslagen '+new Date(rij.antwoord_op).toLocaleString('nl-NL',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'})+' — de agent neemt dit mee bij de volgende run':'De agent leest je antwoord bij de volgende run.'}</small></div></div>`:''}
+  </div>`;
+}
+const arTaakTekst = w => `Meta · ${w.advertentie||w.advertentieset||w.campagne}: ${w.actie}`.slice(0, 200);
+function bindAgentRapport(el){
+  const kies = el.querySelector('#ar_kies'); if (kies) kies.onchange = ()=>{ _arIndex = Number(kies.value); render(); };
+  el.querySelector('#ar_run')?.addEventListener('click', runAgent);
+  el.querySelectorAll('[data-artaak]').forEach(b=>b.onclick=()=>{
+    const w = state.rapporten[_arIndex].rapport.waarschuwingen[Number(b.dataset.artaak)];
+    const dag = WERKDAGEN.includes(new Date(todayISO()+'T12:00:00').getDay()) ? todayISO() : volgendeWerkdag(todayISO());
+    addTaken([arTaakTekst(w)], dag, 'ads', 15);
+  });
+  el.querySelector('#ar_opslaan')?.addEventListener('click', async ()=>{
+    const rij = state.rapporten[_arIndex], antwoord = el.querySelector('#ar_antwoord').value.trim();
+    const { error } = await sb.from('mkt_agent_rapport').update({ antwoord, antwoord_op:new Date().toISOString(), antwoord_door: currentProfile?.naam||'' }).eq('id', rij.id);
+    if (error) { toast('Opslaan mislukt: '+error.message); return; }
+    Object.assign(rij, { antwoord, antwoord_op:new Date().toISOString() }); render(); toast('✓ Antwoord opgeslagen — de agent neemt het mee bij de volgende run');
+  });
 }
 function waakhondHtml(){
   const adviezen = adWaakhond();
@@ -1475,9 +1554,51 @@ function cpStatus(c){
   const recent = (state.meta||[]).some(r=>r.campagne===c.naam && r.datum>=isoDaysAgo(1) && +r.uitgegeven>0);
   return `<span class="cp-status ${recent?'aan':'uit'} afgeleid" title="Afgeleid uit de uitgaven van gisteren/vandaag; de echte status komt met de nieuwe Meta-sync"><i></i>${recent?'Loopt':'Geen uitgaven'}</span>`;
 }
+// ── Meters uit de agent-instructie (docs/meta-campagne-agent-instructies.md §5) ──
+// [goed-als, matig-tot] per meter; richting 'laag' = lager is beter.
+const METERS = {
+  cpl:        { laag:true,  goed:5,     matig:10,   t:'CPL: < €5 goed · €5–10 matig · > €10 slecht' },
+  ctr:        { laag:false, goed:0.02,  matig:0.015,t:'Link-CTR: > 2% goed · 1,5–2% matig · < 1,5% slecht' },
+  cpc:        { laag:true,  goed:0.8,   matig:1,    t:'Link-CPC: < €0,80 goed · €0,80–1 matig · > €1 slecht' },
+  doorzet:    { laag:false, goed:0.17,  matig:0.10, t:'Doorzet (leads ÷ linkklikken): ≥ 17% goed · 10–17% matig · < 10% slecht' },
+  frequentie: { laag:true,  goed:2,     matig:2.5,  t:'Frequentie: < 2 goed · 2–2,5 matig · > 2,5 slecht' },
+  hookrate:   { laag:false, goed:0.22,  matig:0.15, t:'Hookrate (3-sec ÷ weergaven): > 22% goed · 15–22% matig · < 15% slecht' },
+  vasthoud:   { laag:false, goed:0.35,  matig:0.28, t:'Vasthoudrate (ThruPlays ÷ 3-sec): > 35% goed · 28–35% matig · < 28% slecht' },
+  cpm:        { laag:true,  goed:15,    matig:18,   t:'CPM: €11–15 normaal · €15–18 hoog · > €18 dure doelgroep' },
+};
+function meter(k, v){
+  const m = METERS[k]; if (v==null || isNaN(v) || !m) return '';
+  const kl = m.laag ? (v < m.goed ? 'goed' : v <= m.matig ? 'matig' : 'slecht') : (v > m.goed || (k==='doorzet'&&v>=m.goed) ? 'goed' : v >= m.matig ? 'matig' : 'slecht');
+  return ` class="rr m-${kl}" title="${m.t}"`;
+}
+function spelregelsHtml(){
+  return `<details class="spelregels"><summary>📘 Spelregels van de agent — meters, beslisregels en diagnoses</summary>
+    <div class="sr-grid">
+      <div><b>Meters</b><table class="itable"><tr><th style="text-align:left">Meter</th><th>🟢 Goed</th><th>🟠 Matig</th><th>🔴 Slecht</th></tr>
+        <tr><td>CPL</td><td>&lt; €5</td><td>€5–10</td><td>&gt; €10</td></tr><tr><td>Link-CTR</td><td>&gt; 2%</td><td>1,5–2%</td><td>&lt; 1,5%</td></tr>
+        <tr><td>Link-CPC</td><td>&lt; €0,80</td><td>€0,80–1</td><td>&gt; €1</td></tr><tr><td>Doorzet</td><td>≥ 17%</td><td>10–17%</td><td>&lt; 10%</td></tr>
+        <tr><td>Frequentie</td><td>&lt; 2</td><td>2–2,5</td><td>&gt; 2,5</td></tr><tr><td>Hookrate</td><td>&gt; 22%</td><td>15–22%</td><td>&lt; 15%</td></tr>
+        <tr><td>Vasthoudrate</td><td>&gt; 35%</td><td>28–35%</td><td>&lt; 28%</td></tr><tr><td>CPM</td><td>€11–15</td><td>€15–18</td><td>&gt; €18</td></tr></table>
+        <small>Doorzet = leads ÷ linkklikken · Hookrate = 3-sec ÷ weergaven · Vasthoudrate = ThruPlays ÷ 3-sec. Zodra er nabelcijfers zijn, is <b>kosten per geschikte lead</b> de belangrijkste meter.</small></div>
+      <div><b>Eerst genoeg data</b><ul>
+        <li>Klik/hook: €15 besteed én 1.000 weergaven</li><li>CPL/doorzet: 3 dagen live én 10 leads</li>
+        <li>Winnaar: 3–4 dagen, 10–15 leads per advertentie én significant verschil (z-toets, |z| ≥ 1,96)</li><li>Trend: minimaal 5 dagen · dag 1 is geen conclusie</li></ul>
+        <b>Beslisregels</b><ul>
+        <li><b>Stoppen</b> (advertentie): CTR &lt; 1,5% of CPC &gt; €1 <i>én</i> CPL &gt; €10 (of 0 leads na €20). Dure klik maar CPL ≤ €10 → Houden.</li>
+        <li><b>Pauzeren</b> (set/campagne): budget naar €8–10, niet uitzetten. &gt; 7 dagen uit = opnieuw leerfase.</li>
+        <li><b>Opschalen</b>: CPL &lt; €5 en doorzet ≥ 17% over 3–4 dagen en 10–15 leads, <i>én</i> nabelcijfers tonen geschikte leads → extra set van €30 of nieuw concept; niet één set ophogen (max 20% per stap, eens per 2–3 dagen). Boven €30–35 per set daalt de leadkwaliteit.</li></ul></div>
+      <div><b>Diagnoses</b><ul>
+        <li>CTR laag, frequentie &lt; 2 → opening pakt niet → nieuwe hook</li><li>Hookrate goed, CTR laag → midden/einde video herzien</li>
+        <li>Hookrate laag, vasthoudrate goed → alleen eerste 3 sec vervangen</li><li>CTR ≥ 25% onder startwaarde + frequentie &gt; 2,5 → beeld versleten → nieuw concept</li>
+        <li>CTR daalt + CPM ≥ 20% hoger + frequentie &gt; 2 → doelgroep raakt op</li><li>CTR goed, doorzet &lt; 10% → video/tekst/formulier sluiten niet aan (functietitel exact gelijk?)</li>
+        <li>CPM &gt; €18 → dure doelgroep: beoordelen op CPL, niet op klik</li><li>Bestedingsgraad &lt; 60% → budget gaat niet op: nieuw concept of grotere straal</li></ul>
+        <small>Volledige instructie: <code>docs/meta-campagne-agent-instructies.md</code></small></div>
+    </div></details>`;
+}
 function campagneOverzichtHtml(){
   const { volledig, rijen:alle, laden } = campagneRijen();
   if (!alle.length && !laden && !(state.meta||[]).length) return '';
+  alle.forEach(c=>{ c.doorzet = c.link_kliks ? (c.resultaten||0)/c.link_kliks : null; });
   const rijen = alle.filter(c=>!volledig || !_cpAlleenAan || c.aan).sort((a,b)=>(+b[_cpSort]||0)-(+a[_cpSort]||0));
   const som = k => rijen.reduce((t,c)=>t+(+c[k]||0),0);
   const tot = { besteed:som('besteed'), weergaven:som('weergaven'), link_kliks:som('link_kliks'), resultaten:som('resultaten') };
@@ -1497,25 +1618,26 @@ function campagneOverzichtHtml(){
       </span></h4>
     ${volledig?'':`<div class="toel" style="margin:0 0 8px">Status aan/uit, budget, frequentie en campagne-ID verschijnen zodra de nieuwe Meta-sync in Supabase staat (met <b>migratie-campagnes.sql</b>). Tot dan rekent CTR/CPC met alle klikken.</div>`}
     <div style="overflow-x:auto"><table class="itable cptabel">
-      <thead><tr><th>Uit/aan</th><th style="text-align:left">Campagne</th><th class="rr">Budget</th>${kop('resultaten','Resultaten')}${kop('besteed','Besteed bedrag')}${kop('weergaven','Weergaven')}${kop('ctr','CTR (link)')}${kop('cpc','CPC (link)')}${kop('cpl','Kosten per resultaat')}${kop('cpm','CPM')}${kop('frequentie','Frequentie')}${kop('link_kliks','Klikken op links')}<th class="rr">Campagne-ID</th></tr></thead>
-      <tbody>${laden ? '<tr><td colspan="13" style="text-align:center;color:var(--muted)">Cijfers voor deze periode ophalen…</td></tr>' : rijen.length ? '' : '<tr><td colspan="13" style="text-align:center;color:var(--muted)">Geen advertentie-uitgaven in deze periode.</td></tr>'}${rijen.map(c=>`<tr>
+      <thead><tr><th>Uit/aan</th><th style="text-align:left">Campagne</th><th class="rr">Budget</th>${kop('resultaten','Resultaten')}${kop('besteed','Besteed bedrag')}${kop('weergaven','Weergaven')}${kop('ctr','CTR (link)')}${kop('doorzet','Doorzet')}${kop('cpc','CPC (link)')}${kop('cpl','Kosten per resultaat')}${kop('cpm','CPM')}${kop('frequentie','Frequentie')}${kop('link_kliks','Klikken op links')}<th class="rr">Campagne-ID</th></tr></thead>
+      <tbody>${laden ? '<tr><td colspan="14" style="text-align:center;color:var(--muted)">Cijfers voor deze periode ophalen…</td></tr>' : rijen.length ? '' : '<tr><td colspan="14" style="text-align:center;color:var(--muted)">Geen advertentie-uitgaven in deze periode.</td></tr>'}${rijen.map(c=>`<tr>
         <td>${cpStatus(c)}</td>
         <td style="text-align:left"><b>${esc(c.naam)}</b></td>
         <td class="rr">${budget(c)}</td>
         <td class="rr"><b>${nr(c.resultaten||0)}</b></td>
         <td class="rr">${eu(c.besteed||0)}</td>
         <td class="rr">${nr(c.weergaven||0)}</td>
-        <td class="rr">${pc(c.ctr)}</td>
-        <td class="rr">${eu(c.cpc)}</td>
-        <td class="rr">${eu(c.cpl)}</td>
-        <td class="rr">${eu(c.cpm)}</td>
-        <td class="rr" ${c.frequentie==null&&volledig?'title="Frequentie levert Meta alleen voor vandaag, 7 en 30 dagen"':''}>${c.frequentie?Number(c.frequentie).toLocaleString('nl-NL',{maximumFractionDigits:2}):'—'}</td>
+        <td${meter('ctr',c.ctr)||' class="rr"'}>${pc(c.ctr)}</td>
+        <td${meter('doorzet', c.link_kliks ? (c.resultaten||0)/c.link_kliks : null)||' class="rr"'}>${pc(c.link_kliks ? (c.resultaten||0)/c.link_kliks : null)}</td>
+        <td${meter('cpc',c.cpc)||' class="rr"'}>${eu(c.cpc)}</td>
+        <td${meter('cpl',c.cpl)||' class="rr"'}>${eu(c.cpl)}</td>
+        <td${meter('cpm',c.cpm)||' class="rr"'}>${eu(c.cpm)}</td>
+        <td${meter('frequentie',c.frequentie||null)||' class="rr"'}>${c.frequentie?Number(c.frequentie).toLocaleString('nl-NL',{maximumFractionDigits:2}):'—'}</td>
         <td class="rr">${nr(c.link_kliks||0)}</td>
         <td class="rr"><small>${c.id?esc(c.id):'—'}</small></td>
       </tr>`).join('')}</tbody>
       <tfoot><tr><td></td><td style="text-align:left"><b>${rijen.length} campagne${rijen.length===1?'':'s'}</b></td><td class="rr">${volledig?eu(rijen.reduce((t,c)=>t+(+c.budget_dag||0),0))+'<small>per dag</small>':''}</td>
         <td class="rr"><b>${nr(tot.resultaten)}</b></td><td class="rr"><b>${eu(tot.besteed)}</b></td><td class="rr">${nr(tot.weergaven)}</td>
-        <td class="rr">${pc(tot.weergaven?tot.link_kliks/tot.weergaven:null)}</td><td class="rr">${eu(tot.link_kliks?tot.besteed/tot.link_kliks:null)}</td>
+        <td class="rr">${pc(tot.weergaven?tot.link_kliks/tot.weergaven:null)}</td><td class="rr">${pc(tot.link_kliks?tot.resultaten/tot.link_kliks:null)}</td><td class="rr">${eu(tot.link_kliks?tot.besteed/tot.link_kliks:null)}</td>
         <td class="rr">${eu(tot.resultaten?tot.besteed/tot.resultaten:null)}</td><td class="rr">${eu(tot.weergaven?tot.besteed/tot.weergaven*1000:null)}</td><td></td><td class="rr">${nr(tot.link_kliks)}</td><td></td></tr></tfoot>
     </table></div>
   </div>`;
@@ -1546,18 +1668,19 @@ function videoHtml(){
         <span class="cp-bereik">📅 ${fmtD(van)}${van!==tot?' – '+fmtD(tot):''} · periode kies je hierboven</span>
       </span></h4>
     <div style="overflow-x:auto"><table class="itable cptabel">
-      <thead><tr><th style="text-align:left">${_vidPer==='campagne'?'Campagne':'Advertentie'}</th><th class="rr" title="3-sec-weergaven ÷ weergaven (hook rate)">% videoweergaven 3 sec</th><th class="rr">Videoweergaven 3 sec</th><th class="rr">Tot 25%</th><th class="rr">Tot 50%</th><th class="rr">Tot 75%</th><th class="rr">Tot 95%</th><th>Kijkcurve</th><th class="rr">ThruPlays (15 sec)</th><th class="rr">Gem. kijktijd</th><th class="rr">CTR (link)</th><th class="rr">Resultaten</th></tr></thead>
-      <tbody>${!rijen ? '<tr><td colspan="12" style="text-align:center;color:var(--muted)">Videocijfers ophalen…</td></tr>'
+      <thead><tr><th style="text-align:left">${_vidPer==='campagne'?'Campagne':'Advertentie'}</th><th class="rr" title="3-sec-weergaven ÷ weergaven (hook rate)">% videoweergaven 3 sec</th><th class="rr">Videoweergaven 3 sec</th><th class="rr">Tot 25%</th><th class="rr">Tot 50%</th><th class="rr">Tot 75%</th><th class="rr">Tot 95%</th><th>Kijkcurve</th><th class="rr">ThruPlays (15 sec)</th><th class="rr" title="ThruPlays ÷ 3-sec-weergaven">Vasthoudrate</th><th class="rr">Gem. kijktijd</th><th class="rr">CTR (link)</th><th class="rr">Resultaten</th></tr></thead>
+      <tbody>${!rijen ? '<tr><td colspan="13" style="text-align:center;color:var(--muted)">Videocijfers ophalen…</td></tr>'
         : lijst.length ? lijst.map(v=>`<tr>
           <td style="text-align:left"><b>${esc(_vidPer==='campagne'?v.campagne:v.ad)}</b>${_vidPer==='campagne'?'':`<small>${esc(v.campagne)}${v.set?' › '+esc(v.set):''}</small>`}</td>
-          <td class="rr"><b>${v.imp?pc(v.v3/v.imp):'—'}</b></td>
+          <td${meter('hookrate', v.imp?v.v3/v.imp:null)||' class="rr"'}><b>${v.imp?pc(v.v3/v.imp):'—'}</b></td>
           <td class="rr">${nr(v.v3)}</td><td class="rr">${nr(v.p25)}</td><td class="rr">${nr(v.p50)}</td><td class="rr">${nr(v.p75)}</td><td class="rr">${nr(v.p95)}</td>
           <td>${curve(v)}</td>
           <td class="rr">${nr(v.tp)}</td>
+          <td${meter('vasthoud', v.v3?v.tp/v.v3:null)||' class="rr"'}>${v.v3?pc(v.tp/v.v3):'—'}</td>
           <td class="rr">${v.plays?tijd(v.sec/v.plays):'—'}</td>
-          <td class="rr">${v.imp?pc(v.lk/v.imp):'—'}</td>
+          <td${meter('ctr', v.imp?v.lk/v.imp:null)||' class="rr"'}>${v.imp?pc(v.lk/v.imp):'—'}</td>
           <td class="rr"><b>${nr(v.leads)}</b></td></tr>`).join('')
-        : '<tr><td colspan="12" style="text-align:center;color:var(--muted)">Geen videoweergaven in deze periode.</td></tr>'}</tbody>
+        : '<tr><td colspan="13" style="text-align:center;color:var(--muted)">Geen videoweergaven in deze periode.</td></tr>'}</tbody>
     </table></div>
   </div>`;
 }
@@ -1596,6 +1719,8 @@ function renderPrestatie(){
   <div class="inzgrid">
     ${campagneOverzichtHtml()}
     ${videoHtml()}
+    ${agentRapportHtml()}
+    ${spelregelsHtml()}
     ${waakhondHtml()}
     <div class="inzbox" style="grid-column:1/-1"><h4 style="display:flex;justify-content:space-between;align-items:center;gap:8px">📡 Live advertenties (Meta) <span style="display:flex;gap:6px"><button class="qbtn" id="rapportbtn">🖨 Weekrapport</button><button class="qbtn" id="metasyncbtn">↻ Sync nu</button><button class="qbtn" id="metaherstelbtn" title="Haalt de laatste 90 dagen opnieuw op uit Meta (eenmalig, om oude cijfers te herstellen)">↻ 90 dagen herstellen</button></span></h4>${metaStatsHtml()}</div>
     <div class="inzbox" style="grid-column:1/-1"><h4>📈 Organisch deze maand</h4>
@@ -1631,6 +1756,7 @@ function renderPrestatie(){
   </div>`;
 
   el.querySelectorAll('[data-vidper]').forEach(b=>b.onclick=()=>{ _vidPer = b.dataset.vidper; render(); });
+  bindAgentRapport(el);
   const cpSel = el.querySelector('#cp_periode');
   if (cpSel) cpSel.onchange = ()=>{ if (cpSel.value==='eigen') { const [v,t] = cpBereik(); _cpVan = v; _cpTot = t; } _cpPeriode = cpSel.value; render(); };
   const cpVan = el.querySelector('#cp_van'), cpTot = el.querySelector('#cp_tot');

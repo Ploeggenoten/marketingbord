@@ -1,50 +1,30 @@
-// ═══ AD-GUARD v3 · Claude-mediabuyer-agent (2·1·5-kader) ═══
-// Analyseert de volledige accountstructuur (campagne=klant, set=functie, ad=hook)
-// volgens het 2·1·5-kader van Ploeggenoten: link-CTR > 2%, link-CPC < €1, CPL < €5.
-//  1. Per set en per advertentie een 2·1·5-oordeel (in code berekend, zie oordeel215)
-//  2. Falende advertenties (kill-trigger) → stop-advies of automatische pauze
-//  3. Budget per advertentieset → bijschalen/afschalen-advies of automatische
-//     aanpassing (alleen ABO-sets, geclamped, met cooldown)
-//  4. Creative-oordeel: houden / hook aanpassen / nieuwe video / nieuwe flyer,
-//     met briefing van vier regels
-//  5. Na-de-klik-problemen (goede CTR, hoge CPL) → formulier/doelgroep nakijken
-//  6. Hook-verdeling en structuur (CBO/ABO, leerfase)
-// Claude (Opus 5.5) beoordeelt het geheel en geeft onderbouwde adviezen; de
-// vangrails hieronder bepalen wat er ook echt wordt uitgevoerd.
+// ═══ AD-GUARD v4 · Meta-campagne-agent Ploeggenoten (instructie versie 2) ═══
+// Werkt volgens Bryans instructie (docs/meta-campagne-agent-instructies.md, hieronder ingebed):
+// beoordeelt campagne, advertentieset en advertentie op de meters en beslisregels, met
+// drempels voor "te vroeg", diagnoses, significantie (z-toets) en strategische hefbomen,
+// en schrijft één rapport per run naar mkt_agent_rapport (getoond in Prestatie).
+//
+// Cijfers: Meta Marketing API (insights 7 dagen + lifetime, op 3 niveaus) + daguitsplitsing uit
+// mkt_meta_stats (trends en startwaarde). Afgeleide cijfers rekent deze code uit, niet het model.
 //
 // VANGRAILS (hard, in code — niet aan het model overgelaten):
-//  - Alleen PAUZEREN van ads en DAGBUDGET van ABO-sets wijzigen; nooit
-//    verwijderen, nooit campagnebudgetten, nooit targeting/creative.
-//  - Stops alleen als config __auto_stop__ = aan; budget alleen als
-//    __auto_budget__ = aan. Beide staan standaard UIT (schakelaars in de app).
-//  - Automatisch pauzeren alleen als de advertentie in code de 2·1·5-kill-trigger
-//    raakt (≥ €15 én ≥ 1.000 weergaven, en link-CTR < 1,5% of link-CPC > €1).
-//  - Automatisch bijschalen alleen als de set in code op "schalen" staat
-//    (alles op norm, ≥ 3 dagen live, ≥ 10 leads). Afschalen mag altijd binnen de clamp.
-//  - Budget: max ±20% per wijziging, min €5/dag, totaal dagbudget van het
-//    account mag per run niet stijgen, max 1 wijziging per set per 48 uur.
-//  - Max 2 ad-stops per run. 'negeer'-besluiten 7 dagen gerespecteerd.
-//  - Alles gelogd in mkt_ad_besluiten met reden.
-// Secrets: META_ACCESS_TOKEN (+ads_management voor uitvoeren), META_AD_ACCOUNT_ID,
+//  - Alleen advertenties PAUZEREN en het dagbudget van een ABO-set VERLAGEN naar €10
+//    ("pauzeren = budget naar €8–10"). Nooit verhogen, nooit verwijderen, nooit targeting/creative.
+//  - Uitvoeren alleen als __auto_stop__ / __auto_budget__ = aan (standaard UIT), én de code
+//    de regel zelf ook ziet: Stoppen = (CTR < 1,5% of CPC > €1 na €15 en 1.000 weergaven) én
+//    (CPL > €10 of 0 leads na €20); Pauzeren = set-CPL > €10 bij ≥ €50 besteed (7d) en ≥ 3 dagen live.
+//  - Max 2 stops per run; geen budgetwijziging als de set < 3 dagen geleden al gewijzigd is.
+//  - Alles gelogd in mkt_ad_besluiten.
+// Secrets: META_ACCESS_TOKEN (+ads_management om uit te voeren), META_AD_ACCOUNT_ID,
 // ANTHROPIC_API_KEY, CRON_SECRET.
 import { createClient } from "jsr:@supabase/supabase-js@2";
 import Anthropic from "npm:@anthropic-ai/sdk";
 
 const GRAPH = "https://graph.facebook.com/v21.0";
 const MAX_STOPS_PER_RUN = 2;
-const MAX_BUDGET_STAP = 0.20;      // ±20% per stap (onderzoek 21 jul 2026; groter = 2 stappen met 48u)
-const MIN_DAGBUDGET_EUR = 5;
-const BUDGET_COOLDOWN_UUR = 48;
-
-// ── 2·1·5-kader (Ploeggenoten-beleid) ──
-const NORM_CTR = 0.02;             // link-CTR boven 2%
-const NORM_CPC = 1;                // link-CPC onder €1
-const NORM_CPL = 5;                // CPL onder €5
-const KILL_CTR = 0.015;            // kill-trigger: link-CTR onder 1,5% (of CPC boven NORM_CPC)
-const DREMPEL_SPEND = 15;          // pas te beoordelen vanaf €15 besteed…
-const DREMPEL_IMP = 1000;          // …én 1.000 weergaven
-const SCHAAL_DAGEN = 3;            // schalen vanaf 3 dagen live…
-const SCHAAL_LEADS = 10;           // …en 10 leads
+const PAUZE_BUDGET_EUR = 10;
+const BUDGET_RUST_UUR = 72;   // §9: niet aanpassen binnen 3 dagen na een wijziging
+const INSTRUCTIE: string = "# Instructies: Meta-campagne-agent Ploeggenoten (versie 2)\n\n## 1. Wie je bent en wat je doet\n\nJe bent de Meta Ads-analist van Ploeggenoten, een recruitmentbureau uit Alphen aan den Rijn dat werft voor productie, logistiek en techniek (blue collar). Je werkt voor Bryan, die alle marketing doet, grotendeels alleen. Je denkt als performance marketeer met 10+ jaar ervaring: kritisch, resultaatgericht, geen ja-knikker. Je spreekt Nederlands: direct en nuchter.\n\nJe taak:\n1. Cijfers ophalen via Windsor.ai.\n2. Elke campagne, advertentieset en advertentie beoordelen volgens de regels hieronder.\n3. Waarschuwen als iets niet goed draait, met de oorzaak en één concrete actie.\n4. Zeggen wanneer data te dun is voor een conclusie.\n5. Actief wijzen op strategische verbeteringen (§11) als je ziet dat die ontbreken.\n\n**Doel (in volgorde):** 1) zoveel mogelijk geschikte sollicitanten, 2) tegen zo laag mogelijke kosten per geschikte lead. Niet: klikken of bereik.\n\n**Structuur van het account:** campagne = klant, advertentieset = vacature/functie, advertentie = de vacaturevideo met een specifieke hook (opening). Alle campagnes draaien in de speciale advertentiecategorie Werkgelegenheid, met leadformulieren (Instant Forms).\n\n## 2. Data\nDe cijfers worden je hieronder aangeleverd (bron: Meta Marketing API via het Ploeggenoten-marketingbord), op drie niveaus (campagne, advertentieset, advertentie) en voor drie periodes: de laatste 7 dagen, lifetime (vanaf de start), en een daguitsplitsing voor trends. Alles is met link-klikken gerekend. Afgeleide cijfers (doorzet, vasthoudrate, startwaarde, bestedingsgraad, dagen live, z-toetsen) zijn al voor je uitgerekend; reken daarmee en verzin niets. Ontbreekt een cijfer (null), zeg dat dan en reken er niet mee.\n\n## 3. Wat je zelf uitrekent\n\n| Cijfer | Berekening |\n|---|---|\n| Doorzet | leads ÷ klikken op link |\n| Vasthoudrate | ThruPlays ÷ 3-secondenweergaven |\n| Leads per €100 | leads ÷ besteed × 100 |\n| Bereik (benadering) | weergaven ÷ frequentie |\n| Dagen live | vandaag − startdatum |\n| Startwaarde | gemiddelde van CTR, CPM en doorzet over de eerste 3 dagen (uit de daguitsplitsing) |\n| Bestedingsgraad | besteed ÷ (dagbudget × dagen in periode) |\n| Kosten per geschikte lead | besteed ÷ geschikte leads (alleen als Bryan nabelcijfers geeft) |\n\nVergelijk percentages van de kijkcurve (25/50/75/95%) nooit tussen video's van verschillende lengte. Gebruik dan alleen de vasthoudrate (vast moment: 15 seconden).\n\n## 4. Eerst: is er genoeg data?\n\nBeoordeel pas als aan de drempel is voldaan. Anders is het oordeel **Te vroeg**.\n\n| Wat je beoordeelt | Minimaal nodig |\n|---|---|\n| Klik en hook (CTR, CPC, hookrate) | €15 besteed én 1.000 weergaven |\n| CPL, doorzet | 3 dagen live én 10 leads |\n| Een nieuwe advertentie beoordelen op leads | minimaal 2 – 3 × de doel-CPL besteed (± €15 – 30) |\n| Winnaar aanwijzen tussen advertenties | 3 – 4 dagen én 10 – 15 leads per advertentie, én een significant verschil (§8) |\n| Trend (dalend/stijgend) | minimaal 5 dagen in de daguitsplitsing |\n\nZeg het altijd als een periode een weekend bevat of korter is dan 3 dagen. De eerste dag van een advertentie is vaak de beste; trek op dag 1 geen conclusie.\n\n## 5. De meters\n\n| Meter | 🟢 Goed | 🟠 Matig | 🔴 Slecht |\n|---|---|---|---|\n| CPL | < €5 | €5 – 10 | > €10 |\n| Link-CTR | > 2% | 1,5 – 2% | < 1,5% |\n| Link-CPC | < €0,80 | €0,80 – 1 | > €1 |\n| Doorzet | ≥ 17% | 10 – 17% | < 10% |\n| Frequentie | < 2 | 2 – 2,5 | > 2,5 |\n| Hookrate | > 22% | 15 – 22% | < 15% |\n| Vasthoudrate | > 35% | 28 – 35% | < 28% |\n| CPM | €11 – 15 is normaal | €15 – 18 | > €18 = dure doelgroep |\n\nAccount-referentie: CTR rond 1,6 – 1,8%, doorzet gemiddeld 17 – 22%, CPM €11 – 15. De hookrate- en vasthoudnormen zijn voorlopig en worden bijgesteld zodra er meer data is.\n\nZodra er nabelcijfers zijn, is **kosten per geschikte lead** de belangrijkste meter. Vraag Bryan welke norm daarvoor geldt; die is er nog niet.\n\n## 6. Beslisregels\n\n### Stoppen (advertentie uitzetten)\nEen advertentie krijgt **Stoppen** als:\n- link-CTR < 1,5% óf link-CPC > €1 (na €15 en 1.000 weergaven), **én**\n- CPL > €10, of 0 leads na €20 besteding.\n\nRaakt een advertentie de klikregel, maar is de CPL ≤ €10? Dan is het oordeel **Houden**, met de melding \"dure klik, maar goede doorzet\". Kill nooit alleen op CTR of CPC: het doel is de CPL.\n\nEen advertentie binnen een set uitzetten is prima. Meta noemt het wijzigen of toevoegen van advertenties een significante wijziging die de leerfase kan resetten; in de praktijk gebeurt dat niet altijd.\n\n### Pauzeren (advertentieset of campagne)\nPauzeren = **budget naar €8 – 10**, niet uitzetten. Uitzetten alleen als de vacature vervuld is. Waarschuw: een campagne die langer dan 7 dagen uit staat, begint opnieuw in de leerfase.\n\n### Opschalen\nAlleen als:\n- CPL < €5 en doorzet ≥ 17% over minimaal 3 – 4 dagen en 10 – 15 leads, **én**\n- er nabelcijfers zijn die laten zien dat de leads geschikt zijn.\n\nOpschalen = **een extra advertentieset van €30** toevoegen, of een **nieuw creatief concept** in de bestaande set; niet het budget van één set verhogen. Boven €30 – 35 per set daalt de leadkwaliteit aantoonbaar. Verhogen binnen een set: maximaal 20% per stap, eens per 2 – 3 dagen.\n\n### Winnaar aanwijzen\nAlleen bij voldoende data (§4) én een significant verschil (§8). Anders: \"geen aantoonbaar verschil\". Uiteindelijk beslist de CPL (of, met nabelcijfers, de kosten per geschikte lead), niet de CTR.\n\n## 7. Diagnoses: wat een slecht cijfer betekent\n\nGeef bij elke waarschuwing de waarschijnlijke oorzaak:\n\n| Patroon | Diagnose | Actie |\n|---|---|---|\n| CTR laag, frequentie < 2 | Opening pakt niet | Nieuwe hook |\n| Hookrate goed, CTR laag | Opening stopt mensen, de rest van de video overtuigt niet | Midden en einde van de video herzien |\n| Hookrate laag, vasthoudrate goed | Verhaal werkt, opening niet | Alleen de eerste 3 seconden vervangen |\n| CTR ≥ 25% onder startwaarde, frequentie > 2,5 | Beeld versleten | Nieuw concept |\n| CTR daalt én CPM ≥ 20% boven startwaarde én frequentie > 2 | Doelgroep raakt op | Grotere straal overwegen (reset de leerfase, bundelen) |\n| CTR goed, doorzet < 10% | Advertentie en formulier sluiten niet aan | Check of de functietitel in video, tekst en formulier exact gelijk is; check filtervragen en formuliertype |\n| CTR hoog, doorzet laag | Brede of vage belofte trekt klikkers die afhaken | Titel en belofte concreter maken |\n| Alles redelijk, CPL hoog, CPM > €18 | Dure doelgroep (schaarse functie) | Beoordelen op CPL, niet op klik |\n| Bestedingsgraad < 60% | Meta krijgt het budget niet uitgegeven | Doelgroep mogelijk uitgeput: nieuw concept of grotere straal |\n| Lage CPL, maar weinig geschikte kandidaten bij nabellen | Formulier filtert niet, of Meta optimaliseert op volume | Formulier aanscherpen (§11.2); Conversion Leads overwegen (§11.1) |\n| Doorzet plotseling veel hoger of lager dan vorige week | Er is iets veranderd aan formulier of advertentie | Vraag Bryan wat er veranderd is, en leg het vast |\n\n**Belangrijk:** trek nooit een conclusie op één signaal. Een frequentie van 2,2 alleen is geen bewijs dat een doelgroep opraakt; daarvoor moeten ook de CTR dalen en de CPM stijgen.\n\n## 8. Significantie\n\nBij elke vergelijking tussen twee advertenties of periodes: gebruik een z-toets voor twee proporties.\n\n- p₁ = x₁ ÷ n₁, p₂ = x₂ ÷ n₂, p = (x₁ + x₂) ÷ (n₁ + n₂)\n- z = (p₁ − p₂) ÷ √(p × (1 − p) × (1/n₁ + 1/n₂))\n- |z| ≥ 1,96 → significant (p < 0,05)\n\nGebruik per meter de juiste aantallen:\n- CTR: klikken op link ÷ weergaven\n- Hookrate: 3-secondenweergaven ÷ weergaven\n- Vasthoudrate: ThruPlays ÷ 3-secondenweergaven\n- Doorzet: leads ÷ klikken op link\n\nVerschil niet significant? Zeg dan: \"geen aantoonbaar verschil\", ook als het ene getal mooier oogt. Noem waar mogelijk ook de kans dat het verschil toeval is.\n\nLet op verschillen in periode: een oudere advertentie had een verser publiek. Vergelijk dan bij voorkeur de eerste dagen van beide, of dezelfde dagen.\n\n## 9. Budget en structuur\n\nWaarschuw bij:\n- **Set boven €35 per dag** → \"Boven €30 – 35 daalt de leadkwaliteit. Liever een extra set van €30.\"\n- **Budget minder dan 3 dagen geleden gewijzigd** → \"Niet aanpassen, eerst data laten opbouwen.\" Bryan heeft de gewoonte budgetten te vaak bij te stellen: corrigeer hem hierop.\n- **Budgetwijziging > 20%** → \"Reset de leerfase.\"\n- **Hook-test binnen één set** → \"Meta verdeelt het budget zelf. Voor een zuivere test: de A/B-testfunctie met gelijk budget.\"\n- **Verwachte leads per week < 50** → info (geen waarschuwing): \"Deze set komt niet uit de leerfase. Normaal bij dit budget.\"\n\nAantal advertenties per set: bij ± €30 per dag zijn **2 – 4 echt verschillende concepten** het streven. Eén advertentie geeft Meta te weinig keus; meer dan 4 verdeelt het budget te dun. Varianten die alleen in montage verschillen (ondertiteling tegenover motion graphics, een andere muziekkeuze) tellen niet als apart concept (§11.4).\n\nLeerfase-resets: budget > 20% wijzigen, doelgroep of straal aanpassen, formulier wisselen, aan/uit zetten, en volgens Meta ook advertenties wijzigen of toevoegen. Adviseer altijd om wijzigingen te bundelen.\n\n## 10. Leadkwaliteit en nabelcijfers\n\nMeta optimaliseert standaard op ingevulde formulieren, niet op geschikte kandidaten. De kwalificatieratio van Ploeggenoten is laag. Het echte stuurcijfer is **kosten per geschikte lead**.\n\n- Zolang er geen nabelcijfers zijn, zet je bij elk oordeel: \"voorlopig, nabelcijfers ontbreken\".\n- Noem een campagne nooit \"geslaagd\" zonder nabelcijfers.\n- Vraag aan het einde van elke analyse naar nabelresultaten voor de campagnes met de goedkoopste leads: daar is de kans op schijnsucces het grootst.\n- Afvalredenen om naar te vragen: geen eigen vervoer, geen huisvesting, geen ploegenbereidheid, taal.\n- Vraag ook naar de **reactiesnelheid**: hoe snel worden nieuwe leads benaderd (door de AI-systemen of een recruiter)? Leads die binnen een uur worden benaderd, kwalificeren veel vaker dan leads die langer wachten.\n\n## 11. Strategische hefbomen\n\nControleer per campagne of deze punten op orde zijn. Ontbreekt er iets, benoem het dan, ook als Bryan er niet naar vraagt. Dit zijn verbeteringen op accountniveau, geen dagelijkse waarschuwingen: noem ze eens per week of als een probleem erop wijst.\n\n### 11.1 Optimaliseren op kwaliteit: Conversion Leads + CRM-koppeling\nHet prestatiedoel \"Leads\" laat Meta sturen op ingevulde formulieren. Met het doel **\"Conversion Leads\"** en een koppeling van het CRM via de **Conversions API for CRM** stuurt Meta op leads die in het CRM een volgende stap bereiken. Meta rapporteert daarbij gemiddeld 15 – 21% lagere kosten per kwaliteitslead.\n\nVoorwaarden:\n- de Meta Lead ID wordt opgeslagen in het CRM;\n- de status waarop je optimaliseert, wordt binnen 28 dagen bereikt;\n- die status wordt door 1 – 40% van de leads bereikt.\n\nOmdat de kwalificatieratio van Ploeggenoten laag is, is \"geplaatst\" waarschijnlijk te zeldzaam als optimalisatiestap. Kies een eerdere stap die een substantieel deel van de leads haalt, bijvoorbeeld \"telefonisch bereikt en interesse bevestigd\" of \"geschikt na nabellen\". Dit is de grootste hefboom voor leadkwaliteit. Vraag Bryan of deze koppeling er is.\n\n### 11.2 Het formulier\n- **Formuliertype \"Hogere intentie\"** (met een controlescherm vóór verzenden) in plaats van \"Meer volume\". Dat kost doorgaans minder leads, maar filtert per ongeluk ingevulde en ongemotiveerde aanvragen. Let op: dit type wordt alleen getoond in de mobiele feeds van Facebook en Instagram.\n- **Voorwaardelijke logica**: laat het formulier eindigen bij een diskwalificerend antwoord (bijvoorbeeld \"geen eigen vervoer\" of \"geen eigen woonruimte\"). Zo ontstaat er geen ongeschikte lead.\n- **Introscherm** dat zegt voor wie de vacature is en wat er na het invullen gebeurt.\n- Maximaal 3 – 4 filtervragen. Een vraag waarop iedereen \"ja\" antwoordt, filtert niet.\n- Flexibele formulierweergave op **Handmatig**, zodat Meta geen filtervragen weglaat.\n- Functietitel in het formulier exact gelijk aan die in de video en de advertentietekst.\n- Een gepubliceerd formulier kun je niet meer wijzigen. Een nieuw formulier koppelen reset de leerfase: bundel het met andere wijzigingen.\n\n### 11.3 Doelgroep binnen de categorie Werkgelegenheid\n- Geen targeting op leeftijd, geslacht of postcode; minimale straal; lookalike-doelgroepen zijn niet beschikbaar.\n- Aangepaste doelgroepen (bijvoorbeeld klantlijsten) zijn wel toegestaan, mits ze niet discrimineren. Gebruik ze vooral om **uit te sluiten**: eerdere invullers, en kandidaten die al geplaatst of afgewezen zijn.\n- Omdat targeting beperkt is, doet de **creative het targetingwerk**: de video moet in de eerste seconden laten zien voor wie de vacature is (functie, werkomgeving, eventueel salaris). De opening filtert wie stopt.\n\n### 11.4 Creative: verschillende concepten, niet varianten\nMeta's huidige advertentiesysteem kiest per persoon welke advertentie hij ziet, op basis van de inhoud van de creative. Advertenties die visueel sterk op elkaar lijken, worden behandeld als één advertentie.\n\nGevolgen:\n- Tests tussen montagevarianten van dezelfde video (motion graphics tegen ondertiteling) leveren weinig op; de verschillen zijn klein en vaak niet meetbaar.\n- Test **echt verschillende concepten** per vacature, bijvoorbeeld: medewerker vertelt zijn verhaal; werkvloerbeelden met de functietitel; salaris- of voorwaardenhook; een vraag-hook (\"Geen ervaring? …\"); verschillende personen in beeld.\n- Creative slijt sneller dan vroeger. Plan nieuw materiaal per set om de 2 – 3 weken, of eerder als de diagnose in §7 dat aangeeft.\n\n### 11.5 Opvolging\nSnelheid van opvolgen bepaalt een groot deel van de kwaliteit. Vraag hoe snel leads benaderd worden en of de formulierantwoorden meteen bij de beller of het AI-systeem staan.\n\n## 12. Bekende patronen in dit account\n\nGebruik deze als context, niet als wet:\n- Hoe meer klikken, hoe duurder de lead: een vage of brede belofte trekt klikkers die afhaken.\n- De functietitel in video, tekst en formulier moet exact gelijk zijn aan de vacature. Een bredere titel (\"monteur\", \"technisch medewerker\", \"metaalbewerker\") levert meer klikken en slechtere leads op.\n- Engelstalige hooks scoren goed op klik, maar trekken internationaal publiek dat bij nabellen afvalt.\n- Video verslaat flyer op doorzet; authentieke werkvloerbeelden verslaan gepolijste content.\n- Motion graphics maakt geen consistent verschil: bij één test hielp het de vasthoudrate, bij een andere verlaagde het de hookrate.\n- Gemiddeld haakt 60 – 68% van de kijkers af vóór seconde 13. De belangrijkste informatie moet vooraan; kortere video's (± 25 – 30 sec) brengen meer kijkers tot de oproep.\n- Een medewerker die zijn eigen verhaal vertelt, hield kijkers aantoonbaar langer vast dan een standaardopening.\n- Technische functies (monteurs, carrosseriebouw) hebben een CPM van €17 – 29. Daar is de klik altijd duurder.\n- Een grote, plotselinge verbetering in doorzet komt bijna altijd door een wijziging aan formulier of advertentie. Leg vast wat er veranderd is.\n\n## 13. Hoe je antwoordt\n\n**Standaardanalyse (bij elke vraag om \"een analyse\" of \"hoe lopen de campagnes\"):**\n\n1. **Kort oordeel** (2 – 3 zinnen): totaal besteed, totaal leads, gemiddelde CPL, gemiddelde doorzet, en de belangrijkste conclusie.\n2. **Tabel per campagne**: besteed, leads, link-CTR, link-CPC, doorzet, CPL, CPM, frequentie, oordeel.\n3. **Waarschuwingen**, gesorteerd op financiële impact (grootste uitgave met slechtste resultaat eerst):\n   - 🔴 **Actie vandaag**: Stoppen-oordeel, CPL > €10 bij > €50 besteed, doorzet < 10% bij > 30 klikken, bestedingsgraad < 60%.\n   - 🟠 **Let op**: frequentie > 2, CTR daalt ≥ 25% t.o.v. startwaarde, CPM stijgt ≥ 20%, budget boven €35, recente budgetwijziging.\n   - 🟢 **Goed**: kandidaten voor opschalen (na nabelen).\n   - ⚪ **Te vroeg**: onvoldoende data.\n4. Per waarschuwing: **oordeel** (Opschalen / Houden / Monitoren / Pauzeren / Stoppen / Te vroeg), **reden in één zin**, **diagnose** en **één concrete actie**.\n5. **Strategisch punt van de week** (maximaal één, uit §11), alleen als het relevant is.\n6. **Wat je niet kon beoordelen** (ontbrekende data, te korte periode).\n7. **Eén vraag**: meestal naar nabelcijfers.\n\nGeef een duidelijk oordeel, geen vrijblijvende lijst. Noem ook wat beter kan als Bryan er niet naar vraagt. Ben je eerder te stellig geweest en laten nieuwe cijfers iets anders zien, zeg dat dan.\n\n## 14. Wat je niet doet\n\n- Geen conclusies trekken op te weinig data, en geen winnaar noemen zonder significant verschil.\n- Geen veldnamen of cijfers verzinnen. Ontbreekt iets, zeg dat.\n- Nooit \"alle klikken\" of \"alle CTR\" gebruiken: alleen de link-varianten.\n- Geen targeting adviseren die binnen de categorie Werkgelegenheid niet mag (leeftijd, geslacht, postcode, lookalikes).\n- Klantnamen niet gebruiken buiten interne rapportages.\n";
 
 const cors = {
   "Access-Control-Allow-Origin": "*",
@@ -53,38 +33,42 @@ const cors = {
 const json = (obj: unknown, status = 200) =>
   new Response(JSON.stringify(obj), { status, headers: { ...cors, "Content-Type": "application/json" } });
 
-type Row = { datum: string; campagne: string; advertentieset: string; advertentie: string; uitgegeven: number; impressies: number; kliks: number; link_kliks: number; leads: number };
-function stats(rows: Row[]) {
-  const s = { spend: 0, imp: 0, linkKliks: 0, leads: 0 };
-  for (const r of rows) { s.spend += +r.uitgegeven || 0; s.imp += +r.impressies || 0; s.linkKliks += +r.link_kliks || 0; s.leads += +r.leads || 0; }
-  return { ...s, cpc: s.linkKliks ? s.spend / s.linkKliks : null, ctr: s.imp ? s.linkKliks / s.imp : null, cpl: s.leads ? s.spend / s.leads : null };
-}
-type Stats = ReturnType<typeof stats>;
-// Aantal dagen met uitgaven = hoe lang iets (binnen het 30d-venster) echt live is.
-const dagenLive = (rows: Row[]) => new Set(rows.filter((r) => +r.uitgegeven > 0).map((r) => r.datum)).size;
-
-// Beslisboom uit het 2·1·5-kader. Dezelfde uitkomst stuurt de prompt én de vangrails.
-type Oordeel = "te_vroeg" | "kill" | "na_de_klik" | "houden" | "schalen";
-function oordeel215(s: Stats, dagen: number): Oordeel {
-  if (s.spend < DREMPEL_SPEND || s.imp < DREMPEL_IMP) return "te_vroeg";
-  if ((s.ctr ?? 0) < KILL_CTR || s.cpc == null || s.cpc > NORM_CPC) return "kill";
-  if (s.cpl == null || s.cpl > NORM_CPL) return "na_de_klik"; // geen leads boven de drempel = CPL ver boven norm
-  if (s.leads < SCHAAL_LEADS || dagen < SCHAAL_DAGEN) return "houden";
-  return "schalen";
-}
-const OORDEEL_TEKST: Record<Oordeel, string> = {
-  te_vroeg: "TE VROEG (onder €15 of 1.000 weergaven — laten lopen)",
-  kill: "KILL-TRIGGER (link-CTR < 1,5% of link-CPC > €1)",
-  na_de_klik: "NA-DE-KLIK (klikken op norm, CPL > €5 — formulier/doelgroep)",
-  houden: "HOUDEN (op norm, nog te weinig volume)",
-  schalen: "SCHALEN (op norm, ≥ 3 dagen, ≥ 10 leads)",
-};
-
+// Eén lead per regel (Meta meldt formulier-leads onder meerdere namen)
+const LEAD_VOORKEUR = ["onsite_conversion.lead_grouped", "leadgen_grouped", "lead", "offsite_conversion.fb_pixel_lead", "onsite_web_lead"];
+type Actie = { action_type: string; value: string };
+const leadsUit = (a?: Actie[]) => { for (const t of LEAD_VOORKEUR) { const x = (a ?? []).find((y) => y.action_type === t); if (x) return Number(x.value || 0); } return 0; };
+const actie = (a: Actie[] | undefined, t: string) => Number((a ?? []).find((x) => x.action_type === t)?.value || 0);
+const som = (a?: { value: string }[]) => (a ?? []).reduce((t, x) => t + Number(x.value || 0), 0);
+const r2 = (n: number | null, d = 2) => n == null || !isFinite(n) ? null : Math.round(n * 10 ** d) / 10 ** d;
 const iso = (d: Date) => d.toISOString().slice(0, 10);
 const daysAgo = (n: number) => { const d = new Date(); d.setDate(d.getDate() - n); return iso(d); };
-const eur = (n: number | null | undefined) => n == null ? "?" : "€" + Number(n).toFixed(2);
-const pct = (n: number | null | undefined) => n == null ? "?" : (n * 100).toFixed(2) + "%";
-const kpi = (s: Stats) => `${eur(s.spend)}, ${s.imp} weergaven, ${s.leads} leads, link-CTR ${pct(s.ctr)}, link-CPC ${eur(s.cpc)}, CPL ${s.cpl ? eur(s.cpl) : (s.spend ? "geen leads" : "?")}`;
+
+type Kern = { besteed: number; weergaven: number; bereik: number; frequentie: number | null; linkKliks: number; leads: number; cpm: number | null; v3: number; thruplays: number };
+function metrics(k: Kern) {
+  return {
+    besteed: r2(k.besteed), leads: k.leads, weergaven: k.weergaven, link_kliks: k.linkKliks,
+    ctr: r2(k.weergaven ? k.linkKliks / k.weergaven : null, 4), cpc: r2(k.linkKliks ? k.besteed / k.linkKliks : null),
+    cpl: r2(k.leads ? k.besteed / k.leads : null), doorzet: r2(k.linkKliks ? k.leads / k.linkKliks : null, 4),
+    cpm: r2(k.cpm ?? (k.weergaven ? k.besteed / k.weergaven * 1000 : null)), frequentie: r2(k.frequentie),
+    hookrate: r2(k.weergaven && k.v3 ? k.v3 / k.weergaven : null, 4), vasthoudrate: r2(k.v3 ? k.thruplays / k.v3 : null, 4),
+    leads_per_100: r2(k.besteed ? k.leads / k.besteed * 100 : null, 1),
+  };
+}
+const kernUit = (r: Record<string, unknown> & { actions?: Actie[] }): Kern => ({
+  besteed: Number(r.spend || 0), weergaven: Number(r.impressions || 0), bereik: Number(r.reach || 0),
+  frequentie: r.frequency != null ? Number(r.frequency) : null, linkKliks: Number(r.inline_link_clicks || 0),
+  leads: leadsUit(r.actions), cpm: r.cpm != null ? Number(r.cpm) : null, v3: actie(r.actions, "video_view"),
+  thruplays: som(r.video_thruplay_watched_actions as { value: string }[]),
+});
+// z-toets voor twee proporties (§8)
+function zToets(x1: number, n1: number, x2: number, n2: number) {
+  if (!n1 || !n2) return null;
+  const p1 = x1 / n1, p2 = x2 / n2, p = (x1 + x2) / (n1 + n2);
+  const se = Math.sqrt(p * (1 - p) * (1 / n1 + 1 / n2));
+  if (!se) return null;
+  const z = (p1 - p2) / se;
+  return { z: r2(z, 2), significant: Math.abs(z) >= 1.96 };
+}
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: cors });
@@ -93,308 +77,207 @@ Deno.serve(async (req) => {
     const cronSecret = Deno.env.get("CRON_SECRET");
     const isCron = !!cronSecret && req.headers.get("x-cron-key") === cronSecret;
     if (!isCron) {
-      const authClient = createClient(
-        Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_ANON_KEY")!,
-        { global: { headers: { Authorization: req.headers.get("Authorization") ?? "" } } },
-      );
+      const authClient = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_ANON_KEY")!,
+        { global: { headers: { Authorization: req.headers.get("Authorization") ?? "" } } });
       const { data: { user } } = await authClient.auth.getUser();
       if (!user) return json({ error: "geen toegang — log in" }, 403);
     }
     const db = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
-
-    // ── schakelaars (standaard UIT) ──
-    const { data: cfg } = await db.from("mkt_ad_besluiten").select("advertentie,besluit,created_at")
-      .in("advertentie", ["__auto_stop__", "__auto_budget__"]).order("created_at", { ascending: false });
-    const laatste = (k: string) => (cfg ?? []).find((c) => c.advertentie === k)?.besluit === "aan";
-    const autoStop = laatste("__auto_stop__");
-    const autoBudget = laatste("__auto_budget__");
-
-    // ── data: stats uit db + live budgetten uit Meta ──
-    const cut30 = daysAgo(30);
-    // Vandaag bewust NIET meenemen: de lopende dag is halve data (leads komen later binnen
-    // dan de klik) en zou de agent 's ochtends structureel te somber maken.
-    const vandaag = new Date().toLocaleDateString("sv-SE", { timeZone: "Europe/Amsterdam" });
-    const { data: metaRows } = await db.from("mkt_meta_stats").select("*")
-      .gte("datum", cut30).lt("datum", vandaag);
-    const { data: besluiten } = await db.from("mkt_ad_besluiten").select("*")
-      .not("advertentie", "like", "\\_\\_%");
-    if (!metaRows?.length) return json({ ok: true, melding: "geen advertentiedata" });
-
-    // Link-klikken bestaan pas sinds migratie-linkkliks.sql + nieuwe meta-sync. Zolang die
-    // nog niet gevuld zijn, valt het 2·1·5-kader niet toe te passen: dan geen kill/schaal-
-    // oordelen en geen automatische acties — alleen advies met die waarschuwing.
-    const linkDataOk = (metaRows as Row[]).some((r) => +r.link_kliks > 0) ||
-      !(metaRows as Row[]).some((r) => +r.kliks > 0);
-
+    const apiKey = Deno.env.get("ANTHROPIC_API_KEY");
+    if (!apiKey) return json({ error: "ANTHROPIC_API_KEY nog niet ingesteld als secret" }, 500);
     const token = Deno.env.get("META_ACCESS_TOKEN")!;
     let account = Deno.env.get("META_AD_ACCOUNT_ID") ?? "";
     if (!account.startsWith("act_")) account = "act_" + account;
 
-    const q = async (path: string) =>
-      await (await fetch(`${GRAPH}/${path}${path.includes("?") ? "&" : "?"}access_token=${encodeURIComponent(token)}`)).json();
-    const campagnesResp = await q(`${account}/campaigns?fields=id,name,daily_budget,lifetime_budget,effective_status&limit=200`);
-    const adsetsResp = await q(`${account}/adsets?fields=id,name,daily_budget,lifetime_budget,campaign{name},effective_status,learning_stage_info&limit=500`);
-    const adsResp = await q(`${account}/ads?fields=id,name,adset{name},campaign{name},effective_status&limit=500`);
-    if (campagnesResp.error || adsetsResp.error) {
-      return json({ error: "Meta API: " + (campagnesResp.error?.message || adsetsResp.error?.message) }, 502);
-    }
-    type MetaSet = { id: string; name: string; daily_budget?: string; lifetime_budget?: string; campaign?: { name: string }; effective_status: string; learning_stage_info?: { status?: string } };
-    const liveSets = (adsetsResp.data ?? []) as MetaSet[];
-    const liveCamps = (campagnesResp.data ?? []) as { id: string; name: string; daily_budget?: string; effective_status: string }[];
-    const liveAds = (adsResp.data ?? []) as { id: string; name: string; adset?: { name: string }; campaign?: { name: string }; effective_status: string }[];
+    // ── schakelaars (standaard UIT) + eerdere besluiten ──
+    const { data: besluiten } = await db.from("mkt_ad_besluiten").select("*").order("created_at", { ascending: false }).limit(400);
+    const laatste = (k: string) => (besluiten ?? []).find((c) => c.advertentie === k)?.besluit === "aan";
+    const autoStop = laatste("__auto_stop__"), autoBudget = laatste("__auto_budget__");
 
-    // ── overzicht bouwen per campagne → set → hook, met 2·1·5-oordeel ──
-    const d7 = daysAgo(7), d14 = daysAgo(14);
-    const rows = metaRows as Row[];
-    const acc30 = stats(rows);
-    const acc7 = stats(rows.filter((r) => r.datum >= d7));
-
-    const perCamp = new Map<string, Map<string, Row[]>>();
-    for (const r of rows) {
-      if (!perCamp.has(r.campagne)) perCamp.set(r.campagne, new Map());
-      const sets = perCamp.get(r.campagne)!;
-      const setKey = r.advertentieset || "—";
-      if (!sets.has(setKey)) sets.set(setKey, []);
-      sets.get(setKey)!.push(r);
-    }
-
-    // Oordelen per set/ad (key = campagne|set[|ad]) — gebruikt door de vangrails.
-    const setOordeel = new Map<string, Oordeel>();
-    const adOordeel = new Map<string, Oordeel>();
-    // Start-CTR = link-CTR over de eerste 4 live dagen; zakt de huidige CTR daar ver
-    // onder bij oplopende frequentie, dan is dat slijtage (niet: zwak concept).
-    const startCtr = (rs: Row[]) => {
-      const dagen = [...new Set(rs.filter((r) => +r.uitgegeven > 0).map((r) => r.datum))].sort().slice(0, 4);
-      return stats(rs.filter((r) => dagen.includes(r.datum))).ctr;
-    };
-
-    let overzicht = "";
-    for (const [campNaam, sets] of perCamp) {
-      const liveCamp = liveCamps.find((c) => c.name === campNaam);
-      const isCBO = !!(liveCamp?.daily_budget);
-      const cActief = liveCamp?.effective_status === "ACTIVE";
-      overzicht += `\n## Campagne "${campNaam}" ${cActief ? "" : `[${liveCamp?.effective_status ?? "onbekend"}]`} — budget: ${isCBO ? `CBO ${eur(Number(liveCamp!.daily_budget) / 100)}/dag op campagneniveau` : "ABO (budget per set)"}\n`;
-      for (const [setNaam, setRows] of sets) {
-        const ls = liveSets.find((s) => s.name === setNaam && (s.campaign?.name ?? "") === campNaam);
-        const s7 = stats(setRows.filter((r) => r.datum >= d7));
-        const sPrev = stats(setRows.filter((r) => r.datum >= d14 && r.datum < d7));
-        const s30 = stats(setRows);
-        const dagen = dagenLive(setRows);
-        const o = linkDataOk ? oordeel215(s7, dagen) : "te_vroeg";
-        setOordeel.set(`${campNaam}|${setNaam}`, o);
-        const budget = ls?.daily_budget ? `${eur(Number(ls.daily_budget) / 100)}/dag` : (isCBO ? "via CBO" : "onbekend");
-        const leer = ls?.learning_stage_info?.status ? ` leerfase:${ls.learning_stage_info.status}` : "";
-        overzicht += `- Set "${setNaam}" [${ls?.effective_status ?? "?"}${leer}] budget ${budget}, ${dagen} dagen live\n` +
-          `    2·1·5-oordeel (7d): ${OORDEEL_TEKST[o]}\n` +
-          `    7d: ${kpi(s7)}\n    vorige 7d: ${kpi(sPrev)}\n    30d: ${kpi(s30)} · start-CTR (eerste 4 live dagen): ${pct(startCtr(setRows))}\n`;
-        // hooks binnen de set (7d) — impressie-aandeel + eigen 2·1·5-oordeel
-        const perAd = new Map<string, Row[]>();
-        for (const r of setRows) {
-          if (!perAd.has(r.advertentie)) perAd.set(r.advertentie, []);
-          perAd.get(r.advertentie)!.push(r);
-        }
-        const totImp = [...perAd.values()].reduce((t, a) => t + stats(a.filter((r) => r.datum >= d7)).imp, 0) || 1;
-        for (const [adNaam, adRows] of perAd) {
-          const a7 = stats(adRows.filter((r) => r.datum >= d7));
-          if (!a7.imp) continue; // niet getoond in de laatste 7 dagen
-          const ao = linkDataOk ? oordeel215(a7, dagenLive(adRows)) : "te_vroeg";
-          adOordeel.set(`${campNaam}|${setNaam}|${adNaam}`, ao);
-          const liveAd = liveAds.find((x) => x.name === adNaam && (x.adset?.name ?? "") === setNaam);
-          overzicht += `    · hook "${adNaam}" [${liveAd?.effective_status ?? "?"}] ${(a7.imp / totImp * 100).toFixed(0)}% van set-weergaven, ${dagenLive(adRows)} dagen live — ${OORDEEL_TEKST[ao]}\n` +
-            `        7d: ${kpi(a7)} · start-CTR: ${pct(startCtr(adRows))}\n`;
-        }
+    // ── Meta: structuur + inzichten (7 dagen en lifetime, op 3 niveaus) ──
+    const q = async (path: string) => {
+      const uit: Record<string, unknown>[] = [];
+      let url = `${GRAPH}/${path}${path.includes("?") ? "&" : "?"}access_token=${encodeURIComponent(token)}`;
+      for (let i = 0; i < 20 && url; i++) {
+        const d = await (await fetch(url)).json();
+        if (d.error) throw new Error("Meta API: " + d.error.message);
+        uit.push(...(d.data ?? [])); url = d.paging?.next ?? "";
       }
+      return uit;
+    };
+    const IF = "spend,impressions,reach,frequency,inline_link_clicks,cpm,actions,video_thruplay_watched_actions";
+    const [camps, sets, ads] = await Promise.all([
+      q(`${account}/campaigns?fields=id,name,effective_status,daily_budget,lifetime_budget,start_time&limit=300`),
+      q(`${account}/adsets?fields=id,name,campaign_id,effective_status,daily_budget,lifetime_budget,start_time,learning_stage_info&limit=500`),
+      q(`${account}/ads?fields=id,name,adset_id,campaign_id,effective_status,created_time&limit=500`),
+    ]);
+    const ins = async (level: string, preset: string, idVeld: string) => {
+      const rows = await q(`${account}/insights?level=${level}&date_preset=${preset}&fields=${idVeld},${IF}&limit=500`);
+      return new Map(rows.map((r) => [String(r[idVeld]), kernUit(r as never)]));
+    };
+    const [c7, cL, s7, sL, a7, aL] = await Promise.all([
+      ins("campaign", "last_7d", "campaign_id"), ins("campaign", "maximum", "campaign_id"),
+      ins("adset", "last_7d", "adset_id"), ins("adset", "maximum", "adset_id"),
+      ins("ad", "last_7d", "ad_id"), ins("ad", "maximum", "ad_id"),
+    ]);
+
+    // ── daguitsplitsing uit het bord (90 dagen) voor trends en startwaarde ──
+    const dag: Record<string, unknown>[] = [];
+    for (let i = 0; i < 30000; i += 1000) {
+      const { data, error } = await db.from("mkt_meta_stats").select("*").gte("datum", daysAgo(90)).order("datum").range(i, i + 999);
+      if (error || !data?.length) break; dag.push(...data); if (data.length < 1000) break;
     }
+    const vandaag = new Date().toLocaleDateString("sv-SE", { timeZone: "Europe/Amsterdam" });
+    const dagReeks = (filter: (r: Record<string, unknown>) => boolean) => {
+      const per = new Map<string, { besteed: number; imp: number; lk: number; leads: number }>();
+      for (const r of dag.filter(filter)) {
+        const k = String(r.datum); const v = per.get(k) ?? { besteed: 0, imp: 0, lk: 0, leads: 0 };
+        v.besteed += +r.uitgegeven || 0; v.imp += +r.impressies || 0; v.lk += +(r.link_kliks || 0) || 0; v.leads += +r.leads || 0; per.set(k, v);
+      }
+      return [...per.entries()].filter(([d, v]) => v.besteed > 0 && d < vandaag).sort(([a], [b]) => a.localeCompare(b));
+    };
+    const verloop = (reeks: [string, { besteed: number; imp: number; lk: number; leads: number }][]) => {
+      const agg = (x: typeof reeks) => x.reduce((t, [, v]) => ({ besteed: t.besteed + v.besteed, imp: t.imp + v.imp, lk: t.lk + v.lk, leads: t.leads + v.leads }), { besteed: 0, imp: 0, lk: 0, leads: 0 });
+      const st = agg(reeks.slice(0, 3)), laatst = agg(reeks.slice(-3));
+      const w = (a: typeof st) => ({ ctr: r2(a.imp ? a.lk / a.imp : null, 4), cpm: r2(a.imp ? a.besteed / a.imp * 1000 : null), doorzet: r2(a.lk ? a.leads / a.lk : null, 4) });
+      return { dagen_met_uitgaven: reeks.length, startwaarde_eerste_3_dagen: reeks.length >= 3 ? w(st) : null, laatste_3_dagen: reeks.length >= 5 ? w(laatst) : null,
+        per_dag_laatste_10: reeks.slice(-10).map(([d, v]) => ({ d, besteed: r2(v.besteed), ctr: r2(v.imp ? v.lk / v.imp : null, 4), leads: v.leads })) };
+    };
+    const dagenLive = (start?: unknown) => start ? Math.max(0, Math.floor((Date.now() - new Date(String(start)).getTime()) / 864e5)) : null;
+    const wijzigingen = (naam: string) => (besluiten ?? []).filter((b) => b.besluit === "budget" && b.advertentie === naam && String(b.note || "").includes("aangepast"))
+      .map((b) => String(b.created_at).slice(0, 10));
 
-    const recenteBesluiten = (besluiten ?? []).slice(0, 15).map((b) =>
-      `- ${b.created_at?.slice(0, 10)} ${b.besluit} "${b.advertentie}" (${b.status}, door ${b.door})`).join("\n") || "geen";
+    // ── per campagne → set → advertentie, met afgeleide cijfers en drempelvlaggen ──
+    const actief = (s: unknown) => s === "ACTIVE";
+    const campagnes = camps.filter((c) => actief(c.effective_status) || (c7.get(String(c.id))?.besteed ?? 0) > 0).map((c) => {
+      const cid = String(c.id);
+      const cSets = sets.filter((s) => String(s.campaign_id) === cid);
+      const cbo = !!(c.daily_budget || c.lifetime_budget);
+      return {
+        campagne: c.name, status: c.effective_status, budget: cbo ? { niveau: "campagne", dag_eur: c.daily_budget ? Number(c.daily_budget) / 100 : null } : { niveau: "advertentieset" },
+        dagen_live: dagenLive(c.start_time), laatste_7_dagen: c7.get(cid) ? metrics(c7.get(cid)!) : null, lifetime: cL.get(cid) ? metrics(cL.get(cid)!) : null,
+        verloop: verloop(dagReeks((r) => r.campagne === c.name)),
+        advertentiesets: cSets.filter((s) => actief(s.effective_status) || (s7.get(String(s.id))?.besteed ?? 0) > 0).map((s) => {
+          const sid = String(s.id), k7 = s7.get(sid), budgetDag = s.daily_budget ? Number(s.daily_budget) / 100 : null;
+          const sAds = ads.filter((a) => String(a.adset_id) === sid && (actief(a.effective_status) || (a7.get(String(a.id))?.besteed ?? 0) > 0));
+          const adRijen = sAds.map((a) => {
+            const aid = String(a.id), m7 = a7.get(aid);
+            const m = m7 ? metrics(m7) : null;
+            const klikOk = !!m7 && m7.besteed >= 15 && m7.weergaven >= 1000;
+            const stopRegel = klikOk && ((m!.ctr ?? 1) < 0.015 || (m!.cpc ?? 0) > 1) && (((m!.cpl ?? 0) > 10) || (m7!.leads === 0 && m7!.besteed >= 20));
+            return { _id: aid, _k: m7, advertentie: a.name, status: a.effective_status, dagen_live: dagenLive(a.created_time),
+              laatste_7_dagen: m, lifetime: aL.get(aid) ? metrics(aL.get(aid)!) : null,
+              genoeg_data: { klik_en_hook: klikOk, cpl_en_doorzet: !!m7 && (dagenLive(a.created_time) ?? 0) >= 3 && m7.leads >= 10 },
+              stopregel_geraakt_volgens_code: stopRegel, verloop: verloop(dagReeks((r) => r.campagne === c.name && r.advertentieset === s.name && r.advertentie === a.name)) };
+          });
+          // significantie tussen advertenties in dezelfde set (§8)
+          const vergelijkingen: Record<string, unknown>[] = [];
+          for (let i = 0; i < adRijen.length; i++) for (let j = i + 1; j < adRijen.length; j++) {
+            const A = adRijen[i]._k, B = adRijen[j]._k; if (!A || !B) continue;
+            vergelijkingen.push({ a: adRijen[i].advertentie, b: adRijen[j].advertentie,
+              ctr: zToets(A.linkKliks, A.weergaven, B.linkKliks, B.weergaven), doorzet: zToets(A.leads, A.linkKliks, B.leads, B.linkKliks),
+              hookrate: zToets(A.v3, A.weergaven, B.v3, B.weergaven), vasthoudrate: zToets(A.thruplays, A.v3, B.thruplays, B.v3) });
+          }
+          return { advertentieset: s.name, _id: sid, status: s.effective_status, leerfase: (s.learning_stage_info as { status?: string })?.status ?? null,
+            dagbudget_eur: budgetDag, dagen_live: dagenLive(s.start_time),
+            bestedingsgraad_7d: k7 && budgetDag ? r2(k7.besteed / (budgetDag * 7), 2) : null,
+            budget_boven_35: (budgetDag ?? 0) > 35, recente_budgetwijzigingen: wijzigingen(String(s.name)),
+            verwachte_leads_per_week: k7 ? k7.leads : null,
+            laatste_7_dagen: k7 ? metrics(k7) : null, lifetime: sL.get(sid) ? metrics(sL.get(sid)!) : null,
+            verloop: verloop(dagReeks((r) => r.campagne === c.name && r.advertentieset === s.name)),
+            aantal_advertenties: adRijen.length, advertenties: adRijen.map(({ _id, _k, ...r }) => r), vergelijkingen };
+        }),
+      };
+    });
 
-    // ── Claude: integrale mediabuyer-analyse ──
-    const apiKey = Deno.env.get("ANTHROPIC_API_KEY");
-    if (!apiKey) return json({ error: "ANTHROPIC_API_KEY nog niet ingesteld als secret" }, 500);
+    // ── context: Bryans antwoorden op eerdere vragen (o.a. nabelcijfers) ──
+    const { data: eerder } = await db.from("mkt_agent_rapport").select("created_at,rapport,antwoord").order("created_at", { ascending: false }).limit(8);
+    const antwoorden = (eerder ?? []).filter((r) => (r.antwoord || "").trim())
+      .map((r) => `- ${String(r.created_at).slice(0, 10)} · vraag: ${r.rapport?.vraag ?? "?"}\n  antwoord Bryan: ${r.antwoord}`).join("\n") || "nog geen";
+
+    const weekdag = new Date().toLocaleDateString("nl-NL", { weekday: "long", timeZone: "Europe/Amsterdam" });
+    const prompt = `Vandaag: ${weekdag} ${vandaag}. Standaardperiode: de laatste 7 dagen (t/m gisteren). Let op als die een weekend bevat.
+
+DATA (JSON; geldbedragen in €, ctr/doorzet/hookrate/vasthoudrate als fractie, null = niet beschikbaar):
+${JSON.stringify({ campagnes }, null, 0)}
+
+BRYANS ANTWOORDEN OP EERDERE VRAGEN (o.a. nabelcijfers — gebruik ze):
+${antwoorden}
+
+Maak nu de standaardanalyse volgens §13, als JSON in het gevraagde schema. Per waarschuwing precies één concrete actie.
+Geldbedragen met €-teken en komma (€4,26), percentages met komma (1,68%). Klantnamen mogen (intern rapport).`;
+
     const claude = new Anthropic({ apiKey });
-
-    const prompt = `Je bent de mediabuyer-agent van Ploeggenoten, een klein Nederlands recruitmentbureau (productie/logistiek/techniek). Je zit dagelijks in Ads Manager, leest de cijfers zoals ze zijn en verbindt er een besluit aan. Structuur: campagne = klant, advertentieset = functie waarvoor geworven wordt, advertentie = hook (video of flyer). Eén plaatsing is duizenden euro's fee waard; leads zijn sollicitaties via een leadformulier, dus CPL = kosten per resultaat.
-${linkDataOk ? "" : `
-LET OP: de link-klikken zijn nog niet gesynchroniseerd (migratie of nieuwe meta-sync nog niet gedraaid). Link-CTR en link-CPC staan daardoor op 0/?. Trek GEEN conclusies over creatives of kill-triggers; geef hooguit structuur-advies en meld in één advies (type "structuur") dat de sync eerst moet draaien.
-`}
-ACCOUNTOVERZICHT (laatste 30 dagen, vandaag niet meegeteld; 7d = laatste 7 dagen):
-Account 7d: ${kpi(acc7)} · 30d: ${kpi(acc30)}
-${overzicht}
-Recente besluiten (niet herhalen, cooldowns respecteren):
-${recenteBesluiten}
-
-HET BEOORDELINGSKADER: 2 · 1 · 5 — percentages omhoog, euro's omlaag.
-- Link-CTR boven 2% · link-CPC onder €1 · CPL onder €5. Dit is de ruggengraat van elk oordeel. CPM en frequentie zijn geen normen maar verklaringen.
-- Het 2·1·5-oordeel per set en hook is hierboven al in code berekend volgens de beslisboom. Neem het over; wijk alleen af als de context (leerfase, recente besluiten, slijtage) daar een duidelijke reden voor geeft, en zeg dan waarom.
-- Beslisboom: (1) onder €15 of 1.000 weergaven → te vroeg, laten lopen, niets veranderen. (2) kill-trigger: link-CTR < 1,5% of link-CPC > €1 → stoppen of vervangen; bij lage CTR is de creative het probleem, niet het budget. (3) CPL > €5 maar CTR en CPC op norm → probleem zit ná de klik: formulier, vraagstelling of doelgroep — NIET de creative vervangen. (4) op norm maar < 10 leads of < 3 dagen live → houden. (5) op norm, ≥ 3 dagen, ≥ 10 leads → schalen met max 20% per keer, om de 2–3 dagen.
-- Pauzeren van een SET betekent: dagbudget terug naar €8–10, niet uitzetten (dan blijft de leerhistorie bewaard). Uitzetten doe je alleen met losse advertenties (hooks).
-
-DIAGNOSE — koppel elk oordeel aan een oorzaak:
-- Lage link-CTR → de hook pakt niet (eerste seconden / eerste beeld). Actie: nieuwe hook testen, niet het budget aanpassen.
-- Goede CTR, hoge CPC → veel concurrentie of smalle doelgroep (kijk naar CPM).
-- Goede CTR, hoge CPL → mensen haken af in het formulier. Laat checken of Flexible Form Display op Handmatig staat (niet Geoptimaliseerd — dan vallen de filtervragen weg).
-- CTR die zakt t.o.v. de start-CTR terwijl het al een tijd loopt → advertentiemoeheid: nieuwe creative, dezelfde set.
-
-CREATIVE-OORDEEL — apart van het budgetbesluit, kies de kleinste ingreep:
-- Alleen de klikkant (link-CTR) wijst naar de creative. CTR op norm + CPL te hoog = geen creative-probleem.
-- CTR was nooit goed → concept klopt niet → nieuwe video, nieuwe invalshoek.
-- CTR was goed (start-CTR) en zakt nu → slijtage → nieuwe hook op bestaand materiaal (andere eerste 3 seconden, openingszin, scènevolgorde). Pas opnieuw filmen als een tweede hook-variant ook niet aanslaat.
-- CTR verschilt sterk tussen hooks in dezelfde set → geen productie nodig: winnaar doorschalen, verliezer eruit.
-- Video als de vacature uitleg vraagt (het werk, de ploeg, waarom daar werken) — met echte medewerkers op locatie, geen acteur. Flyer/statisch als het snel moet of de boodschap kort is (één voorwaarde, één arbeidsvoorwaarde, één regio); staat binnen een dag live.
-- Draaien er in een set alleen video's of alleen statics en zakt de CTR → eerst het andere formaat testen.
-- Bij "nieuwe video", "nieuwe flyer" of "hook aanpassen" ALTIJD een briefing van vier regels: vacature · formaat · motivatie van de kandidaat die centraal staat · welke hook getest wordt tegen wat er nu draait.
-
-OVERIGE SPEELREGELS (geverifieerd onderzoek 21 jul 2026):
-- LEERFASE: een set verlaat de leerfase na ~50 leads binnen 7 dagen. Bij dit budget (€500-3000/mnd) kunnen maar 1-3 sets tegelijk echt leren. Veel dunne sets = versnippering. "Learning limited" → adviseer samenvoegen; kleine functies bundelen. Geen budget-edits aan sets in de leerfase.
-- CBO verdeelt bewust niet eerlijk; voor eerlijke verdeling per functie: ABO. "Ad Set Budget Sharing" uitzetten als eerlijke verdeling het doel is.
-- HOOK-TESTEN: nieuwe hooks hongeren binnen ~48u uit naast een bewezen winnaar. Aanpak: kleine aparte ABO-testcampagne, één hook per set, vast budget; winnaar daarna in de hoofdcampagne via post-ID-hergebruik. Hooks met < 10% van de set-weergaven na ≥ 4 dagen zijn feitelijk ongetest.
-- Frequente budgetwijzigingen resetten het leren: liever één goed getimede wijziging dan dagelijks schuiven.
-- Attributie loopt 1-2 dagen achter. Geen advies is beter dan een zwak advies. Is iets niet te beoordelen, zeg dat ("nog niet te zeggen") in plaats van te gokken.
-
-Geef je adviezen. Types:
-- "stop_ad": advertentie (hook) uitzetten — alleen bij een kill-trigger
-- "budget_set": nieuw dagbudget voor een ABO-set (geef nieuw_dagbudget_eur) — schalen, of pauzeren naar €8–10
-- "creative": creative-besluit voor een set (geef creative_actie en, behalve bij "winnaar_doorschalen", een briefing)
-- "na_de_klik": CPL te hoog bij goede CTR/CPC → formulier, vraagstelling of doelgroep nakijken
-- "hook_test": hooks die geen eerlijke kans krijgen + concrete testaanpak
-- "structuur": advies over hoe de campagnes/budgetten zijn opgezet
-Geef bij elk advies over een set het oordeel in één woord (Schalen / Houden / Pauzeren / Stoppen / Te vroeg).
-Rangschik de adviezen op hoeveel geld ermee gemoeid is, grootste eerst.
-
-SCHRIJFSTIJL — Bryan (marketeer) leest dit:
-- Zakelijk en direct, gewone-mensen-Nederlands, korte zinnen. Een set die niet werkt heet gewoon een set die niet werkt; geen "mooie trend" of "geweldige resultaten".
-- De 2·1·5-termen link-CTR, link-CPC en CPL mag je gebruiken (dat is Bryans eigen kader), altijd met eenheid en Nederlandse notatie: "2,7% link-CTR", "€0,84 link-CPC", "€3,42 CPL". Overige vaktermen (CBO/ABO, CPA, CPM, leerfase, post-ID) vertaal je: "budget staat op de campagne / op de functie", "de periode waarin Meta nog leert".
-- Noem klanten zoals de campagne heet.
-- Sluit ELK advies af met één concrete zin die begint met "Doen: …" — precies wat Bryan nu moet klikken of maken. De briefing staat apart in het veld briefing.
-- Max 3 zinnen per advies (exclusief briefing).
-Voorbeeld: "Deze hook staat na €22 op 0,9% link-CTR — ruim onder de 1,5%-grens; de eerste seconden pakken niet. De andere hook in deze set doet 2,6%. Doen: zet deze advertentie uit in Ads Manager."
-vertrouwen: hoog/middel/laag.`;
-
     const resp = await claude.beta.messages.create({
       model: "claude-opus-5-5",
       max_tokens: 16000,
       thinking: { type: "adaptive" },
-      // Opus 5.5 staat standaard op effort "medium"; budgetbesluiten verdienen "high".
-      // Weigert de veiligheidsfilter onterecht, dan draait Anthropic de vraag op een
-      // aanbevolen ander model (fallbacks: "default") in plaats van dat de run mislukt.
       betas: ["server-side-fallback-2026-07-01"],
       fallbacks: "default",
+      system: INSTRUCTIE,
       output_config: {
         effort: "high",
-        format: {
-          type: "json_schema",
-          schema: {
-            type: "object",
-            properties: {
-              adviezen: {
-                type: "array",
-                items: {
-                  type: "object",
-                  properties: {
-                    type: { type: "string", enum: ["stop_ad", "budget_set", "creative", "na_de_klik", "hook_test", "structuur"] },
-                    campagne: { type: "string" },
-                    advertentieset: { type: "string" },
-                    advertentie: { type: "string" },
-                    oordeel: { type: "string", enum: ["Schalen", "Houden", "Pauzeren", "Stoppen", "Te vroeg"] },
-                    nieuw_dagbudget_eur: { type: "number" },
-                    creative_actie: { type: "string", enum: ["houden", "hook_aanpassen", "nieuwe_video", "nieuwe_flyer", "ander_formaat_testen", "winnaar_doorschalen"] },
-                    briefing: { type: "string" },
-                    reden: { type: "string" },
-                    vertrouwen: { type: "string", enum: ["hoog", "middel", "laag"] },
-                  },
-                  required: ["type", "campagne", "reden", "vertrouwen"],
-                  additionalProperties: false,
-                },
-              },
-            },
-            required: ["adviezen"],
-            additionalProperties: false,
-          },
-        },
+        format: { type: "json_schema", schema: {
+          type: "object", additionalProperties: false,
+          required: ["kort_oordeel", "campagnes", "waarschuwingen", "strategisch_punt", "niet_beoordeeld", "vraag"],
+          properties: {
+            kort_oordeel: { type: "string" },
+            campagnes: { type: "array", items: { type: "object", additionalProperties: false, required: ["campagne", "oordeel", "toelichting"],
+              properties: { campagne: { type: "string" }, oordeel: { type: "string", enum: ["Opschalen", "Houden", "Monitoren", "Pauzeren", "Stoppen", "Te vroeg"] }, toelichting: { type: "string" } } } },
+            waarschuwingen: { type: "array", items: { type: "object", additionalProperties: false,
+              required: ["niveau", "oordeel", "campagne", "reden", "diagnose", "actie"],
+              properties: {
+                niveau: { type: "string", enum: ["actie_vandaag", "let_op", "goed", "te_vroeg"] },
+                oordeel: { type: "string", enum: ["Opschalen", "Houden", "Monitoren", "Pauzeren", "Stoppen", "Te vroeg"] },
+                campagne: { type: "string" }, advertentieset: { type: "string" }, advertentie: { type: "string" },
+                reden: { type: "string" }, diagnose: { type: "string" }, actie: { type: "string" } } } },
+            strategisch_punt: { type: "string" },
+            niet_beoordeeld: { type: "array", items: { type: "string" } },
+            vraag: { type: "string" },
+          } } },
       },
       messages: [{ role: "user", content: prompt }],
-    });
-    if (resp.stop_reason === "refusal") return json({ ok: false, error: "Claude weigerde de analyse" }, 502);
-    if (resp.stop_reason === "max_tokens") return json({ ok: false, error: "analyse afgekapt (max_tokens) — niets uitgevoerd" }, 502);
-    const txt = resp.content.find((b) => b.type === "text") as { text: string };
-    type Advies = { type: string; campagne: string; advertentieset?: string; advertentie?: string; oordeel?: string; nieuw_dagbudget_eur?: number; creative_actie?: string; briefing?: string; reden: string; vertrouwen: string };
-    const { adviezen } = JSON.parse(txt.text) as { adviezen: Advies[] };
-    const kop = (adv: Advies) => adv.oordeel ? `[${adv.oordeel}] ` : "";
+    } as never);
+    const r = resp as unknown as { stop_reason: string; content: { type: string; text?: string }[] };
+    if (r.stop_reason === "refusal") return json({ ok: false, error: "Claude weigerde de analyse" }, 502);
+    if (r.stop_reason === "max_tokens") return json({ ok: false, error: "analyse afgekapt (max_tokens) — niets uitgevoerd" }, 502);
+    const rapport = JSON.parse(r.content.find((b) => b.type === "text")!.text!) as {
+      waarschuwingen: { niveau: string; oordeel: string; campagne: string; advertentieset?: string; advertentie?: string; reden: string; actie: string }[] };
 
-    // ── uitvoeren binnen vangrails + alles loggen ──
-    const totaalBudgetVoor = liveSets.reduce((t, s) => t + (Number(s.daily_budget) || 0), 0) / 100;
-    let totaalBudgetNa = totaalBudgetVoor;
+    // ── uitvoeren binnen de vangrails ──
+    const uitgevoerd: string[] = [];
     let stops = 0;
-    const resultaten: Record<string, unknown>[] = [];
-
-    for (const adv of adviezen) {
-      let uitgevoerd = false, detail = "";
-
-      if (adv.type === "stop_ad" && adv.advertentie) {
-        const alGedaan = (besluiten ?? []).some((b) => b.advertentie === adv.advertentie && b.besluit === "stop" && b.status !== "bevestigd");
-        // 2·1·5-vangrail: alleen automatisch pauzeren als de code de kill-trigger ook ziet.
-        const killInCode = [...adOordeel].some(([k, o]) => o === "kill" &&
-          k.startsWith(`${adv.campagne}|`) && k.endsWith(`|${adv.advertentie}`) &&
-          (!adv.advertentieset || k === `${adv.campagne}|${adv.advertentieset}|${adv.advertentie}`));
-        if (!killInCode) detail = "geen 2·1·5-kill-trigger in de cijfers — alleen advies";
-        if (!alGedaan && autoStop && killInCode && adv.vertrouwen === "hoog" && stops < MAX_STOPS_PER_RUN) {
-          const doelen = liveAds.filter((a) => a.name === adv.advertentie &&
-            (!adv.advertentieset || (a.adset?.name ?? "") === adv.advertentieset) && a.effective_status === "ACTIVE");
-          for (const ad of doelen) {
-            const p = await fetch(`${GRAPH}/${ad.id}`, { method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" }, body: new URLSearchParams({ status: "PAUSED", access_token: token }) });
-            const pj = await p.json();
-            if (pj.error) detail = pj.error.message; else uitgevoerd = true;
-          }
-          if (uitgevoerd) stops++;
+    for (const w of rapport.waarschuwingen) {
+      const camp = campagnes.find((c) => c.campagne === w.campagne);
+      const set = camp?.advertentiesets.find((s) => s.advertentieset === w.advertentieset);
+      if (w.oordeel === "Stoppen" && w.advertentie && set) {
+        const ad = set.advertenties.find((a) => a.advertentie === w.advertentie);
+        const metaAd = ads.find((a) => a.name === w.advertentie && sets.find((s) => String(s.id) === String(a.adset_id))?.name === w.advertentieset && actief(a.effective_status));
+        if (autoStop && ad?.stopregel_geraakt_volgens_code && metaAd && stops < MAX_STOPS_PER_RUN) {
+          const p = await (await fetch(`${GRAPH}/${metaAd.id}`, { method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" },
+            body: new URLSearchParams({ status: "PAUSED", access_token: token }) })).json();
+          const ok = !p.error; if (ok) { stops++; uitgevoerd.push(`gepauzeerd: ${w.advertentie}`); }
+          await db.from("mkt_ad_besluiten").insert({ advertentie: w.advertentie, campagne: w.campagne, besluit: "stop", status: "open", door: "Claude-agent",
+            note: `🤖 ${ok ? "Automatisch gepauzeerd" : "Pauzeren mislukt: " + p.error?.message}. ${w.reden} Doen: ${w.actie}` });
         }
-        if (!alGedaan) await db.from("mkt_ad_besluiten").insert({
-          advertentie: adv.advertentie, campagne: adv.campagne, besluit: "stop", status: "open",
-          door: "Claude-agent", note: `🤖 ${kop(adv)}${uitgevoerd ? "Automatisch gepauzeerd" : "Stop-advies" + (detail ? ` (niet automatisch: ${detail})` : autoStop ? "" : " (auto-stop staat uit)")}. ${adv.reden}`,
-        });
       }
-
-      else if (adv.type === "budget_set" && adv.advertentieset && adv.nieuw_dagbudget_eur) {
-        const ls = liveSets.find((s) => s.name === adv.advertentieset && (s.campaign?.name ?? "") === adv.campagne);
-        const huidigEur = ls?.daily_budget ? Number(ls.daily_budget) / 100 : null;
-        let doelEur = adv.nieuw_dagbudget_eur;
-        let kanUitvoeren = autoBudget && adv.vertrouwen !== "laag" && !!ls && huidigEur != null;
-        if (kanUitvoeren) {
-          // clamp ±20%, min €5, cooldown 48u, totaal mag niet stijgen
-          doelEur = Math.max(MIN_DAGBUDGET_EUR, Math.min(huidigEur! * (1 + MAX_BUDGET_STAP), Math.max(huidigEur! * (1 - MAX_BUDGET_STAP), doelEur)));
-          const cutCooldown = new Date(Date.now() - BUDGET_COOLDOWN_UUR * 3600e3).toISOString();
-          const recent = (besluiten ?? []).some((b) => b.besluit === "budget" && b.advertentie === adv.advertentieset && b.created_at > cutCooldown);
-          if (ls!.learning_stage_info?.status === "LEARNING") { kanUitvoeren = false; detail = "set zit in de leerfase — Meta adviseert dan geen budget-edits"; }
-          else if (doelEur > huidigEur! && setOordeel.get(`${adv.campagne}|${adv.advertentieset}`) !== "schalen") { kanUitvoeren = false; detail = "set staat volgens 2·1·5 (nog) niet op schalen"; }
-          else if (recent) { kanUitvoeren = false; detail = "cooldown 48u"; }
-          else if (totaalBudgetNa - huidigEur! + doelEur > totaalBudgetVoor + 0.01) { kanUitvoeren = false; detail = "totaalbudget zou stijgen — alleen Bryan/Tjeerd verhogen het plafond"; }
+      if (w.oordeel === "Pauzeren" && set && !w.advertentie) {
+        const s7 = set.laatste_7_dagen, budget = set.dagbudget_eur;
+        const regel = !!s7 && (s7.besteed ?? 0) >= 50 && (s7.cpl ?? 0) > 10 && (set.dagen_live ?? 0) >= 3;
+        const rust = !(besluiten ?? []).some((b) => b.besluit === "budget" && b.advertentie === set.advertentieset && String(b.note || "").includes("aangepast") &&
+          Date.now() - new Date(b.created_at).getTime() < BUDGET_RUST_UUR * 3600e3);
+        if (autoBudget && regel && rust && budget && budget > PAUZE_BUDGET_EUR) {
+          const p = await (await fetch(`${GRAPH}/${set._id}`, { method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" },
+            body: new URLSearchParams({ daily_budget: String(PAUZE_BUDGET_EUR * 100), access_token: token }) })).json();
+          const ok = !p.error; if (ok) uitgevoerd.push(`budget ${set.advertentieset}: €${budget} → €${PAUZE_BUDGET_EUR}`);
+          await db.from("mkt_ad_besluiten").insert({ advertentie: set.advertentieset, campagne: w.campagne, besluit: "budget", status: "open", door: "Claude-agent",
+            note: `🤖 ${ok ? `Dagbudget aangepast: €${budget} → €${PAUZE_BUDGET_EUR} (pauzeren)` : "Budget aanpassen mislukt: " + p.error?.message}. ${w.reden}` });
         }
-        if (kanUitvoeren) {
-          const p = await fetch(`${GRAPH}/${ls!.id}`, { method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" }, body: new URLSearchParams({ daily_budget: String(Math.round(doelEur * 100)), access_token: token }) });
-          const pj = await p.json();
-          if (pj.error) detail = pj.error.message; else { uitgevoerd = true; totaalBudgetNa = totaalBudgetNa - huidigEur! + doelEur; }
-        }
-        await db.from("mkt_ad_besluiten").insert({
-          advertentie: adv.advertentieset, campagne: adv.campagne, besluit: "budget", status: "open",
-          door: "Claude-agent", note: `🤖 ${kop(adv)}${uitgevoerd ? `Dagbudget aangepast: ${eur(huidigEur)} → ${eur(doelEur)}` : `Budget-advies: ${eur(huidigEur)} → ${eur(adv.nieuw_dagbudget_eur)}${detail ? ` (niet uitgevoerd: ${detail})` : autoBudget ? "" : " (auto-budget staat uit)"}`}. ${adv.reden}`,
-        });
       }
-
-      else { // creative / na_de_klik / hook_test / structuur → altijd alleen advies
-        const label = ({ creative: "creative", na_de_klik: "na de klik", hook_test: "hook-test" } as Record<string, string>)[adv.type] ?? "structuur";
-        const actie = adv.creative_actie ? ` ${adv.creative_actie.replaceAll("_", " ")}:` : "";
-        const briefing = adv.briefing ? `\nBriefing: ${adv.briefing}` : "";
-        await db.from("mkt_ad_besluiten").insert({
-          advertentie: adv.advertentie || adv.advertentieset || adv.campagne, campagne: adv.campagne,
-          besluit: "advies", status: "open", door: "Claude-agent",
-          note: `🤖 [${label}] ${kop(adv)}${actie} ${adv.reden}${briefing}`,
-        });
-      }
-      resultaten.push({ ...adv, uitgevoerd, detail: detail || undefined });
     }
 
-    return json({ ok: true, autoStop, autoBudget, linkDataOk, adviezen: adviezen.length, gestopt: stops,
-      budgetVoor: totaalBudgetVoor, budgetNa: totaalBudgetNa, resultaten });
+    const { error: re } = await db.from("mkt_agent_rapport").insert({ rapport, uitgevoerd, model: "claude-opus-5-5" });
+    return json({ ok: true, opgeslagen: !re, fout_opslaan: re?.message, autoStop, autoBudget, waarschuwingen: rapport.waarschuwingen.length, uitgevoerd });
   } catch (e) {
     return json({ error: String(e) }, 500);
   }
