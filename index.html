@@ -1656,8 +1656,10 @@ function videoHtml(){
   if (!_cpCache[k]) cpLaad(van, tot);
   const rijen = Array.isArray(_cpCache[k]) ? _cpCache[k] : null;
   if (rijen && !_cpVideo) return `<div class="inzbox" style="grid-column:1/-1"><h4>🎬 Video-prestaties</h4><div class="toel" style="margin:0">De videocijfers verschijnen zodra <b>migratie-video.sql</b> in Supabase is gedraaid en de nieuwe Meta-sync live staat.</div></div>`;
+  // alleen campagnes die nu aanstaan (zelfde vinkje als bij Lopende campagnes)
+  const aanNu = state.campagnes?.length && _cpAlleenAan ? new Set(state.campagnes.filter(c=>c.aan).map(c=>c.naam)) : null;
   const per = {};
-  (rijen||[]).forEach(r=>{
+  (rijen||[]).filter(r=>!aanNu || aanNu.has(r.campagne)).forEach(r=>{
     const sleutel = _vidPer==='campagne' ? r.campagne : `${r.campagne}|${r.advertentieset}|${r.advertentie}`;
     const v = per[sleutel] ??= { campagne:r.campagne, set:r.advertentieset, ad:r.advertentie, imp:0, v3:0, p25:0, p50:0, p75:0, p95:0, tp:0, plays:0, sec:0, lk:0, leads:0 };
     v.imp += +r.impressies||0; v.v3 += +r.video_3s||0; v.p25 += +r.video_p25||0; v.p50 += +r.video_p50||0; v.p75 += +r.video_p75||0;
@@ -1673,7 +1675,7 @@ function videoHtml(){
       <span class="cp-filters">
         <button class="qbtn${_vidPer==='advertentie'?' aan':''}" data-vidper="advertentie">Per advertentie</button>
         <button class="qbtn${_vidPer==='campagne'?' aan':''}" data-vidper="campagne">Per campagne</button>
-        <span class="cp-bereik">📅 ${fmtD(van)}${van!==tot?' – '+fmtD(tot):''} · periode kies je hierboven</span>
+        <span class="cp-bereik">📅 ${fmtD(van)}${van!==tot?' – '+fmtD(tot):''} · periode kies je hierboven${aanNu?' · alleen campagnes die aanstaan':''}</span>
       </span></h4>
     <div style="overflow-x:auto"><table class="itable cptabel">
       <thead><tr><th style="text-align:left">${_vidPer==='campagne'?'Campagne':'Advertentie'}</th><th class="rr" title="3-sec-weergaven ÷ weergaven (hook rate)">% videoweergaven 3 sec</th><th class="rr">Videoweergaven 3 sec</th><th class="rr">Tot 25%</th><th class="rr">Tot 50%</th><th class="rr">Tot 75%</th><th class="rr">Tot 95%</th><th>Kijkcurve</th><th class="rr">ThruPlays (15 sec)</th><th class="rr" title="ThruPlays ÷ 3-sec-weergaven">Vasthoudrate</th><th class="rr">Gem. kijktijd</th><th class="rr">CTR (link)</th><th class="rr">Resultaten</th></tr></thead>
