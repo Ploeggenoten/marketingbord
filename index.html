@@ -1323,11 +1323,20 @@ function waakhondHtml(){
     </div></div>`;
   const auto = autoStopActief(), autoB = autoBudgetActief();
   const aanStijl = 'background:#e4f1e9;border-color:#a8d0b6;color:#1e6b3f';
-  const agentAdv = agentAdviezen();
+  // Per onderwerp (campagne + set/advertentie + soort) alleen het nieuwste advies tonen;
+  // de waakhond draait elke dag, dus oudere adviezen over hetzelfde zijn achterhaald.
+  const agentAdv = (()=>{
+    const groepen = new Map();
+    agentAdviezen().slice().sort((a,b)=>(b.created_at||'').localeCompare(a.created_at||'')).forEach(b=>{
+      const k = `${b.campagne}|${b.advertentie}|${b.besluit}`;
+      if (!groepen.has(k)) groepen.set(k, { ...b, _ouder: [] }); else groepen.get(k)._ouder.push(b.id);
+    });
+    return [...groepen.values()];
+  })();
   const advKaart = b => `<div class="advies ${b.besluit==='budget'?'':'warn'}">
     <b>${b.besluit==='budget'?'💶 Budget':'💡 Advies'}: ${esc(b.advertentie)}</b>
-    <small style="color:var(--muted)">${esc(b.campagne)} · ${(b.created_at||'').slice(0,10)}</small><br>${esc(b.note||'')}
-    <div style="margin-top:7px;display:flex;gap:6px;flex-wrap:wrap"><button class="qbtn" data-wh="bevestig|${b.id}|">✓ Gezien / afgehandeld</button>${(state.taken||[]).some(t=>t.tekst===adviesAlsTaak(b) && !t.klaar) ? '<span class="ds-ok">✓ staat in Mijn week</span>' : `<button class="qbtn" data-advtaak="${b.id}" title="Als taak in Mijn week zetten (vandaag, 15 min, Ads)">＋ als taak in Mijn week</button>`}</div>
+    <small style="color:var(--muted)">${esc(b.campagne)} · ${(b.created_at||'').slice(0,10)}${b._ouder?.length?` · vervangt ${b._ouder.length} ouder${b._ouder.length>1?'e adviezen':' advies'} hierover`:''}</small><br>${esc(b.note||'')}
+    <div style="margin-top:7px;display:flex;gap:6px;flex-wrap:wrap"><button class="qbtn" data-whgroep="${[b.id, ...(b._ouder||[])].join(',')}">✓ Gezien / afgehandeld</button>${(state.taken||[]).some(t=>t.tekst===adviesAlsTaak(b) && !t.klaar) ? '<span class="ds-ok">✓ staat in Mijn week</span>' : `<button class="qbtn" data-advtaak="${b.id}" title="Als taak in Mijn week zetten (vandaag, 15 min, Ads)">＋ als taak in Mijn week</button>`}</div>
   </div>`;
   return `<div class="inzbox" style="grid-column:1/-1">
     <h4 style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">🐕 Advertentie-waakhond & mediabuyer-agent
@@ -1425,6 +1434,12 @@ function renderPrestatie(){
 
   el.querySelectorAll('[data-open]').forEach(u=>u.onclick=()=>openEdit(u.dataset.open));
   el.querySelector('#metasyncbtn').onclick = () => metaSync(true);
+  // afhandelen sluit ook de oudere adviezen over hetzelfde onderwerp
+  el.querySelectorAll('[data-whgroep]').forEach(b=>b.onclick=async()=>{
+    const ids = b.dataset.whgroep.split(',').map(Number);
+    await sb.from('mkt_ad_besluiten').update({ status:'bevestigd' }).in('id', ids);
+    await loadFromDB(); render(); toast('✓ Advies afgehandeld');
+  });
   el.querySelectorAll('[data-advtaak]').forEach(b=>b.onclick=()=>{
     const adv = state.besluiten.find(x=>String(x.id)===b.dataset.advtaak); if (!adv) return;
     const dag = WERKDAGEN.includes(new Date(todayISO()+'T12:00:00').getDay()) ? todayISO() : volgendeWerkdag(todayISO());
