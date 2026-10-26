@@ -1164,19 +1164,20 @@ function syncOuderdom(){
 }
 // ─── META-SYNC (Edge Function, token server-side) ───────────────
 let _metaSyncing = false;
-async function metaSync(handmatig){
+async function metaSync(handmatig, dagen){
   if (_metaSyncing) return;
   _metaSyncing = true;
-  if (handmatig) toast('📡 Meta-cijfers ophalen…');
+  if (handmatig) toast(dagen ? `📡 Meta-cijfers van de laatste ${dagen} dagen opnieuw ophalen… (kan een minuut duren)` : '📡 Meta-cijfers ophalen…');
   try {
-    const { data, error } = await sb.functions.invoke('meta-sync');
+    const { data, error } = await sb.functions.invoke(dagen ? `meta-sync?dagen=${dagen}` : 'meta-sync');
+    for (const k in _cpCache) delete _cpCache[k];   // campagne-overzicht opnieuw laten optellen
     if (error || data?.error) {
       const msg = data?.error || error?.message || 'sync mislukt';
       if (handmatig) toast(/secret|ingesteld/i.test(msg) ? 'Meta-koppeling nog niet geactiveerd (secrets ontbreken)' : '⚠ '+msg);
       console.warn('meta-sync', msg);
     } else {
       await loadFromDB(); render();
-      if (handmatig) toast(`✓ Meta gesynct — ${data.regels} regels`);
+      if (handmatig) toast(`✓ Meta gesynct — ${data.regels} regels${data.campagnes?`, ${data.campagnes} campagnes`:''}`);
     }
   } catch(e) { console.warn('meta-sync', e); if (handmatig) toast('⚠ Meta-sync niet bereikbaar'); }
   _metaSyncing = false;
@@ -1516,7 +1517,7 @@ function renderPrestatie(){
   <div class="inzgrid">
     ${campagneOverzichtHtml()}
     ${waakhondHtml()}
-    <div class="inzbox" style="grid-column:1/-1"><h4 style="display:flex;justify-content:space-between;align-items:center;gap:8px">📡 Live advertenties (Meta) <span style="display:flex;gap:6px"><button class="qbtn" id="rapportbtn">🖨 Weekrapport</button><button class="qbtn" id="metasyncbtn">↻ Sync nu</button></span></h4>${metaStatsHtml()}</div>
+    <div class="inzbox" style="grid-column:1/-1"><h4 style="display:flex;justify-content:space-between;align-items:center;gap:8px">📡 Live advertenties (Meta) <span style="display:flex;gap:6px"><button class="qbtn" id="rapportbtn">🖨 Weekrapport</button><button class="qbtn" id="metasyncbtn">↻ Sync nu</button><button class="qbtn" id="metaherstelbtn" title="Haalt de laatste 90 dagen opnieuw op uit Meta (eenmalig, om oude cijfers te herstellen)">↻ 90 dagen herstellen</button></span></h4>${metaStatsHtml()}</div>
     <div class="inzbox" style="grid-column:1/-1"><h4>📈 Organisch deze maand</h4>
       <div class="split" style="margin-top:2px"><span><b style="font-size:22px">${pubM.length}</b> gepubliceerd</span><span><b style="font-size:22px">${som('bereik').toLocaleString('nl-NL')}</b> bereik</span><span><b style="font-size:22px">${som('leads')}</b> leads</span></div>
     </div>
@@ -1558,6 +1559,7 @@ function renderPrestatie(){
   const cpAan = el.querySelector('#cp_aan'); if (cpAan) cpAan.onchange = ()=>{ _cpAlleenAan = cpAan.checked; render(); };
   el.querySelectorAll('[data-open]').forEach(u=>u.onclick=()=>openEdit(u.dataset.open));
   el.querySelector('#metasyncbtn').onclick = () => metaSync(true);
+  el.querySelector('#metaherstelbtn').onclick = () => metaSync(true, 90);
   // afhandelen sluit ook de oudere adviezen over hetzelfde onderwerp
   el.querySelectorAll('[data-whgroep]').forEach(b=>b.onclick=async()=>{
     const ids = b.dataset.whgroep.split(',').map(Number);
