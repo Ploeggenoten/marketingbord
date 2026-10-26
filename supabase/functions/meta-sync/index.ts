@@ -11,10 +11,18 @@
 import { createClient } from "jsr:@supabase/supabase-js@2";
 
 const GRAPH = "https://graph.facebook.com/v21.0";
-const LEAD_TYPES = new Set([
-  "lead", "leadgen_grouped", "onsite_conversion.lead_grouped",
-  "offsite_conversion.fb_pixel_lead", "onsite_web_lead",
-]);
+// Meta meldt dezelfde lead onder meerdere actie-namen ("lead" is het totaal; formulier-leads
+// staan óók als "onsite_conversion.lead_grouped"). Optellen gaf precies het dubbele (vergeleken
+// met Ads Manager, 26 okt 2026). Daarom: één bron per regel, in deze volgorde van voorkeur —
+// gelijk aan de kolom "Resultaten · Leads (formulier)" in Ads Manager.
+const LEAD_VOORKEUR = ["onsite_conversion.lead_grouped", "leadgen_grouped", "lead", "offsite_conversion.fb_pixel_lead", "onsite_web_lead"];
+function leadsUit(acts?: { action_type: string; value: string }[]): number {
+  for (const type of LEAD_VOORKEUR) {
+    const a = (acts ?? []).find((x) => x.action_type === type);
+    if (a) return Number(a.value || 0);
+  }
+  return 0;
+}
 
 const cors = {
   "Access-Control-Allow-Origin": "*",
@@ -64,7 +72,9 @@ Deno.serve(async (req) => {
     // de app labelt die dag als 'loopt nog' en de waakhond oordeelt er niet over).
     const vandaag = new Date().toLocaleDateString("sv-SE", { timeZone: "Europe/Amsterdam" }); // YYYY-MM-DD
     const startD = new Date(vandaag + "T12:00:00Z");
-    startD.setDate(startD.getDate() - 29);
+    // standaard 30 dagen; eenmalig verder terug kan met ?dagen=90 (bijv. om oude cijfers te herstellen)
+    const dagenTerug = Math.min(90, Math.max(1, Number(url0.searchParams.get("dagen")) || 30));
+    startD.setDate(startD.getDate() - (dagenTerug - 1));
     const sinds = startD.toISOString().slice(0, 10);
     const range = encodeURIComponent(JSON.stringify({ since: sinds, until: vandaag }));
     const fields = "campaign_name,adset_name,ad_name,spend,impressions,clicks,inline_link_clicks,reach,actions";
@@ -73,14 +83,12 @@ Deno.serve(async (req) => {
     // Meerdere ads kunnen dezelfde naam hebben → aggregeer per (datum, campagne, advertentienaam),
     // anders botst de upsert ("cannot affect row a second time").
     const agg = new Map<string, Record<string, unknown>>();
-    for (let page = 0; page < 10 && url; page++) {
+    for (let page = 0; page < 40 && url; page++) {
       const res = await fetch(url);
       const data = await res.json();
       if (data.error) return json({ error: "Meta API: " + (data.error.message ?? JSON.stringify(data.error)) }, 502);
       for (const r of data.data ?? []) {
-        const leads = (r.actions ?? [])
-          .filter((a: { action_type: string }) => LEAD_TYPES.has(a.action_type))
-          .reduce((s: number, a: { value: string }) => s + Number(a.value || 0), 0);
+        const leads = leadsUit(r.actions);
         const key = `${r.date_start}|${r.campaign_name ?? ""}|${r.adset_name ?? ""}|${r.ad_name ?? ""}`;
         const cur = agg.get(key) ?? {
           datum: r.date_start, campagne: r.campaign_name ?? "", advertentieset: r.adset_name ?? "", advertentie: r.ad_name ?? "",
@@ -117,8 +125,6 @@ Deno.serve(async (req) => {
       const sR = await qa(`${account}/adsets?fields=campaign_id,daily_budget,lifetime_budget,effective_status&limit=500`);
       const sets = (sR.data ?? []) as { campaign_id: string; daily_budget?: string; lifetime_budget?: string; effective_status: string }[];
       const perPeriode: Record<string, Record<string, unknown>> = {};
-      const leadsUit = (acts?: { action_type: string; value: string }[]) =>
-        (acts ?? []).filter((x) => LEAD_TYPES.has(x.action_type)).reduce((t, x) => t + Number(x.value || 0), 0);
       for (const [label, preset] of [["vandaag", "today"], ["d7", "last_7d"], ["d30", "last_30d"]]) {
         const iR = await qa(`${account}/insights?level=campaign&date_preset=${preset}&limit=300` +
           `&fields=campaign_id,spend,impressions,reach,frequency,inline_link_clicks,cpm,actions`);
