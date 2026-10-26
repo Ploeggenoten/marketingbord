@@ -1,7 +1,7 @@
 // ═══ META-SYNC · Supabase Edge Function ═══
 // Haalt advertentie-inzichten (laatste 30 dagen, per dag per advertentie) uit de
 // officiële Meta Marketing API en schrijft ze naar mkt_meta_stats. Daarnaast per campagne
-// status, budget, id en kerncijfers (vandaag / 7 / 30 dagen) naar mkt_meta_campagnes.
+// status, budget, id en kerncijfers per periode (vandaag t/m vorige maand) naar mkt_meta_campagnes.
 // Secrets (Dashboard → Edge Functions → Secrets):
 //   META_ACCESS_TOKEN   — System User-token met ads_read (Business Manager)
 //   META_AD_ACCOUNT_ID  — advertentieaccount-id, met of zonder 'act_'-prefix
@@ -125,7 +125,9 @@ Deno.serve(async (req) => {
       const sR = await qa(`${account}/adsets?fields=campaign_id,daily_budget,lifetime_budget,effective_status&limit=500`);
       const sets = (sR.data ?? []) as { campaign_id: string; daily_budget?: string; lifetime_budget?: string; effective_status: string }[];
       const perPeriode: Record<string, Record<string, unknown>> = {};
-      for (const [label, preset] of [["vandaag", "today"], ["d7", "last_7d"], ["d30", "last_30d"]]) {
+      // alle snelle keuzes van het bord kant-en-klaar uit Meta (dan klopt ook frequentie/bereik)
+      for (const [label, preset] of [["vandaag", "today"], ["gisteren", "yesterday"], ["d7", "last_7d"], ["d14", "last_14d"],
+                                     ["d30", "last_30d"], ["maand", "this_month"], ["vorigemaand", "last_month"]]) {
         const iR = await qa(`${account}/insights?level=campaign&date_preset=${preset}&limit=300` +
           `&fields=campaign_id,spend,impressions,reach,frequency,inline_link_clicks,cpm,actions`);
         for (const r of iR.data ?? []) {

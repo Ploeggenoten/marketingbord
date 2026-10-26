@@ -1188,6 +1188,17 @@ async function metaSync(handmatig, dagen){
   } catch(e) { console.warn('meta-sync', e); if (handmatig) toast('⚠ Meta-sync niet bereikbaar'); }
   _metaSyncing = false;
 }
+// Terwijl het bord openstaat: elke 5 minuten de advertentiecijfers opnieuw lezen (en zo nodig
+// een sync starten), zodat het campagne-overzicht bij blijft zonder zelf te verversen.
+setInterval(async ()=>{
+  if (document.hidden || !currentUser || view !== 'prestatie') return;
+  if (document.activeElement?.matches?.('input,textarea,select')) return;   // niet storen tijdens typen/kiezen
+  const [c, m] = await Promise.all([ sb.from('mkt_meta_campagnes').select('*'), sb.from('mkt_meta_stats').select('*').order('datum',{ascending:false}).limit(2000) ]);
+  if (!c.error) state.campagnes = c.data||[];
+  if (!m.error) state.meta = m.data||[];
+  for (const k in _cpCache) delete _cpCache[k];
+  metaAutoSync(); render();
+}, 5*60e3);
 function metaAutoSync(){
   // Alleen als de koppeling ooit data gaf. Drempel 30 min: Bryan kijkt meerdere keren
   // per dag, dus bij openen van het scherm horen de cijfers vers te zijn — niet uren oud.
@@ -1393,9 +1404,9 @@ function learningsLijstHtml(){
 let _cpPeriode = 'd7', _cpAlleenAan = true, _cpSort = 'besteed', _cpVan = '', _cpTot = '';
 // Snelle keuzes zoals in Ads Manager. 'meta' = Meta levert deze periode kant-en-klaar (incl. frequentie).
 const CP_PERIODES = {
-  vandaag:{ t:'Vandaag', meta:true }, gisteren:{ t:'Gisteren' }, d7:{ t:'Afgelopen 7 dagen', meta:true },
-  d14:{ t:'Afgelopen 14 dagen' }, d30:{ t:'Afgelopen 30 dagen', meta:true }, maand:{ t:'Deze maand' },
-  vorigemaand:{ t:'Vorige maand' }, eigen:{ t:'Zelf kiezen…' } };
+  vandaag:{ t:'Vandaag', meta:true }, gisteren:{ t:'Gisteren', meta:true }, d7:{ t:'Afgelopen 7 dagen', meta:true },
+  d14:{ t:'Afgelopen 14 dagen', meta:true }, d30:{ t:'Afgelopen 30 dagen', meta:true }, maand:{ t:'Deze maand', meta:true },
+  vorigemaand:{ t:'Vorige maand', meta:true }, eigen:{ t:'Zelf kiezen…' } };
 function cpBereik(){
   const t = todayISO(), dag = n => isoDaysAgo(n);
   const nu = new Date(), eersteDit = isoLokaal(new Date(nu.getFullYear(), nu.getMonth(), 1));
@@ -1420,9 +1431,8 @@ async function cpLaad(van, tot){
 function campagneRijen(){
   const meta = state.campagnes?.length ? state.campagnes : null;
   // Kant-en-klare Meta-cijfers als die er zijn voor deze periode
-  if (meta && CP_PERIODES[_cpPeriode].meta) {
-    const sleutel = _cpPeriode==='vandaag' ? 'vandaag' : _cpPeriode;
-    return { volledig:true, rijen: meta.map(c=>({ ...c, ...(c.cijfers?.[sleutel]||{}) })) };
+  if (meta && CP_PERIODES[_cpPeriode].meta && meta.some(c=>c.cijfers && _cpPeriode in c.cijfers)) {
+    return { volledig:true, rijen: meta.map(c=>({ ...c, ...(c.cijfers?.[_cpPeriode]||{}) })) };
   }
   // Anders: optellen uit de dagcijfers voor precies de gekozen periode
   const [van, tot] = cpBereik(), k = van+'|'+tot;
@@ -1476,6 +1486,7 @@ function campagneOverzichtHtml(){
         <select id="cp_periode" class="cp-periode">${Object.entries(CP_PERIODES).map(([k,x])=>`<option value="${k}"${_cpPeriode===k?' selected':''}>${x.t}</option>`).join('')}</select>
         ${_cpPeriode==='eigen'?`<input type="date" id="cp_van" value="${cpBereik()[0]}" max="${todayISO()}"> t/m <input type="date" id="cp_tot" value="${cpBereik()[1]}" max="${todayISO()}">`:''}
         <span class="cp-bereik">📅 ${fmtD(cpBereik()[0])}${cpBereik()[0]!==cpBereik()[1]?' – '+fmtD(cpBereik()[1]):''}</span>
+        ${(()=>{ const t = (state.campagnes||[]).map(c=>c.synced_at||'').sort().pop() || state.meta?.[0]?.synced_at; return t ? `<span class="cp-bereik" title="De Meta-sync draait elk uur vanzelf; het bord ververst zich elke 5 minuten">🔄 bijgewerkt ${new Date(t).toLocaleString('nl-NL',{weekday:'short',hour:'2-digit',minute:'2-digit'})}</span>` : ''; })()}
         ${volledig?`<label style="font-size:12px;font-weight:600;display:flex;gap:5px;align-items:center"><input type="checkbox" id="cp_aan" ${_cpAlleenAan?'checked':''}> alleen wat aanstaat</label>`:''}
       </span></h4>
     ${volledig?'':`<div class="toel" style="margin:0 0 8px">Status aan/uit, budget, frequentie en campagne-ID verschijnen zodra de nieuwe Meta-sync in Supabase staat (met <b>migratie-campagnes.sql</b>). Tot dan rekent CTR/CPC met alle klikken.</div>`}
