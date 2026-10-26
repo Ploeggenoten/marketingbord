@@ -77,7 +77,11 @@ Deno.serve(async (req) => {
     startD.setDate(startD.getDate() - (dagenTerug - 1));
     const sinds = startD.toISOString().slice(0, 10);
     const range = encodeURIComponent(JSON.stringify({ since: sinds, until: vandaag }));
-    const fields = "campaign_name,adset_name,ad_name,spend,impressions,clicks,inline_link_clicks,reach,actions";
+    // + videocijfers per advertentie (zelfde kolommen als in Ads Manager)
+    const fields = "campaign_name,adset_name,ad_name,spend,impressions,clicks,inline_link_clicks,reach,actions," +
+      "video_play_actions,video_p25_watched_actions,video_p50_watched_actions,video_p75_watched_actions," +
+      "video_p95_watched_actions,video_thruplay_watched_actions,video_avg_time_watched_actions";
+    const somV = (a?: { value: string }[]) => (a ?? []).reduce((t, x) => t + Number(x.value || 0), 0);
     let url = `${GRAPH}/${account}/insights?level=ad&fields=${fields}` +
       `&time_increment=1&time_range=${range}&limit=500&access_token=${encodeURIComponent(token)}`;
     // Meerdere ads kunnen dezelfde naam hebben → aggregeer per (datum, campagne, advertentienaam),
@@ -93,8 +97,19 @@ Deno.serve(async (req) => {
         const cur = agg.get(key) ?? {
           datum: r.date_start, campagne: r.campaign_name ?? "", advertentieset: r.adset_name ?? "", advertentie: r.ad_name ?? "",
           uitgegeven: 0, impressies: 0, kliks: 0, link_kliks: 0, leads: 0, bereik: 0,
+          video_3s: 0, video_p25: 0, video_p50: 0, video_p75: 0, video_p95: 0, thruplays: 0, video_plays: 0, video_tijd_sec: 0,
           synced_at: new Date().toISOString(),
         };
+        // 3-seconden-weergaven staan bij Meta als actie "video_view"; kijktijd = gemiddelde × aantal starts
+        const plays = somV(r.video_play_actions);
+        cur.video_3s = (cur.video_3s as number) + Number((r.actions ?? []).find((x: { action_type: string }) => x.action_type === "video_view")?.value || 0);
+        cur.video_p25 = (cur.video_p25 as number) + somV(r.video_p25_watched_actions);
+        cur.video_p50 = (cur.video_p50 as number) + somV(r.video_p50_watched_actions);
+        cur.video_p75 = (cur.video_p75 as number) + somV(r.video_p75_watched_actions);
+        cur.video_p95 = (cur.video_p95 as number) + somV(r.video_p95_watched_actions);
+        cur.thruplays = (cur.thruplays as number) + somV(r.video_thruplay_watched_actions);
+        cur.video_plays = (cur.video_plays as number) + plays;
+        cur.video_tijd_sec = (cur.video_tijd_sec as number) + somV(r.video_avg_time_watched_actions) * plays;
         cur.uitgegeven = (cur.uitgegeven as number) + Number(r.spend || 0);
         cur.impressies = (cur.impressies as number) + Number(r.impressions || 0);
         cur.kliks = (cur.kliks as number) + Number(r.clicks || 0);
@@ -110,8 +125,13 @@ Deno.serve(async (req) => {
     // ── wegschrijven met service-role (app leest alleen) ──
     const db = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
     if (rows.length) {
-      const { error } = await db.from("mkt_meta_stats")
+      let { error } = await db.from("mkt_meta_stats")
         .upsert(rows, { onConflict: "datum,campagne,advertentieset,advertentie" });
+      if (error && /video|thruplay/i.test(error.message)) {
+        // videokolommen bestaan nog niet (migratie-video.sql nog niet gedraaid) → zonder video opslaan
+        const kaal = rows.map(({ video_3s, video_p25, video_p50, video_p75, video_p95, thruplays, video_plays, video_tijd_sec, ...r }) => r);
+        ({ error } = await db.from("mkt_meta_stats").upsert(kaal, { onConflict: "datum,campagne,advertentieset,advertentie" }));
+      }
       if (error) return json({ error: "opslaan mislukt: " + error.message }, 500);
     }
 

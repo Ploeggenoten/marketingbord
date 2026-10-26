@@ -200,6 +200,9 @@ nav.fases{background:#20301a;border-bottom:1px solid #33421f;padding:0 18px;disp
 .cp-filters{display:flex;gap:6px;flex-wrap:wrap;align-items:center;font-family:var(--body);font-weight:400;text-transform:none;letter-spacing:normal;font-size:12.5px;color:var(--muted)}
 .cp-filters label{font-weight:500 !important;color:var(--txt)}
 .cp-periode,#cp_van,#cp_tot{font-weight:400;font:inherit;font-size:12.5px;padding:5px 8px;border:1px solid var(--line);border-radius:8px;background:#fff}
+.vid-curve{display:inline-flex;align-items:flex-end;gap:2px;height:24px}
+.vid-curve i{width:7px;background:#6fa03c;border-radius:2px 2px 0 0}
+.cptabel td small{display:block}
 .cp-bereik{font-size:12px;color:var(--muted);font-weight:400}
 /* Contentplanning: twee banen per week */
 .pweek{margin-bottom:12px}
@@ -1414,14 +1417,17 @@ function cpBereik(){
   return ({ vandaag:[t,t], gisteren:[dag(1),dag(1)], d7:[dag(7),dag(1)], d14:[dag(14),dag(1)], d30:[dag(30),dag(1)],
     maand:[eersteDit,t], vorigemaand:[eersteVorig,laatsteVorig], eigen:[_cpVan||dag(7), _cpTot||dag(1)] })[_cpPeriode];
 }
-const _cpCache = {};   // 'van|tot' → dagregels uit mkt_meta_stats (of 'laden')
+const _cpCache = {};
+let _cpVideo = true, _vidPer = 'advertentie';   // video-blok: per advertentie of per campagne   // 'van|tot' → dagregels uit mkt_meta_stats (of 'laden')
 async function cpLaad(van, tot){
   const k = van+'|'+tot; if (_cpCache[k]) return;
   _cpCache[k] = 'laden';
   const rijen = [];
   for (let i = 0; i < 20000; i += 1000) {   // in stukken van 1000 (maximum per verzoek)
-    const { data, error } = await sb.from('mkt_meta_stats').select('datum,campagne,uitgegeven,impressies,kliks,link_kliks,leads')
+    const velden = 'datum,campagne,advertentieset,advertentie,uitgegeven,impressies,kliks,link_kliks,leads';
+    let { data, error } = await sb.from('mkt_meta_stats').select(velden + (_cpVideo ? ',video_3s,video_p25,video_p50,video_p75,video_p95,thruplays,video_plays,video_tijd_sec' : ''))
       .gte('datum', van).lte('datum', tot).order('datum').range(i, i+999);
+    if (error && _cpVideo) { _cpVideo = false; i -= 1000; continue; }   // videokolommen bestaan nog niet
     if (error) break;
     rijen.push(...(data||[])); if (!data || data.length < 1000) break;
   }
@@ -1514,6 +1520,47 @@ function campagneOverzichtHtml(){
     </table></div>
   </div>`;
 }
+// ── Video-prestaties (zelfde kolommen als Ads Manager): hoe lang blijven mensen kijken ──
+function videoHtml(){
+  const [van, tot] = cpBereik(), k = van+'|'+tot;
+  if (!_cpCache[k]) cpLaad(van, tot);
+  const rijen = Array.isArray(_cpCache[k]) ? _cpCache[k] : null;
+  if (rijen && !_cpVideo) return `<div class="inzbox" style="grid-column:1/-1"><h4>🎬 Video-prestaties</h4><div class="toel" style="margin:0">De videocijfers verschijnen zodra <b>migratie-video.sql</b> in Supabase is gedraaid en de nieuwe Meta-sync live staat.</div></div>`;
+  const per = {};
+  (rijen||[]).forEach(r=>{
+    const sleutel = _vidPer==='campagne' ? r.campagne : `${r.campagne}|${r.advertentieset}|${r.advertentie}`;
+    const v = per[sleutel] ??= { campagne:r.campagne, set:r.advertentieset, ad:r.advertentie, imp:0, v3:0, p25:0, p50:0, p75:0, p95:0, tp:0, plays:0, sec:0, lk:0, leads:0 };
+    v.imp += +r.impressies||0; v.v3 += +r.video_3s||0; v.p25 += +r.video_p25||0; v.p50 += +r.video_p50||0; v.p75 += +r.video_p75||0;
+    v.p95 += +r.video_p95||0; v.tp += +r.thruplays||0; v.plays += +r.video_plays||0; v.sec += +r.video_tijd_sec||0; v.lk += +(r.link_kliks||r.kliks)||0; v.leads += +r.leads||0;
+  });
+  const lijst = Object.values(per).filter(v=>v.v3>0).sort((a,b)=>b.v3-a.v3);
+  const nr = n => Number(n).toLocaleString('nl-NL'), pc = n => (n*100).toLocaleString('nl-NL',{minimumFractionDigits:2,maximumFractionDigits:2})+'%';
+  const tijd = s => { s = Math.round(s); return `${String(Math.floor(s/60)).padStart(2,'0')}:${String(s%60).padStart(2,'0')}`; };
+  // kijkcurve: van 3 sec naar 95% als balkjes, zodat je in één oogopslag ziet waar mensen afhaken
+  const curve = v => `<span class="vid-curve" title="Van wie 3 sec keek: ${[['25%',v.p25],['50%',v.p50],['75%',v.p75],['95%',v.p95]].map(([t,n])=>`${t}: ${pc(n/v.v3)}`).join(' · ')}">${[v.v3,v.p25,v.p50,v.p75,v.p95].map(n=>`<i style="height:${Math.max(2,Math.round(n/v.v3*22))}px"></i>`).join('')}</span>`;
+  return `<div class="inzbox" style="grid-column:1/-1">
+    <h4 style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">🎬 Video-prestaties
+      <span class="cp-filters">
+        <button class="qbtn${_vidPer==='advertentie'?' aan':''}" data-vidper="advertentie">Per advertentie</button>
+        <button class="qbtn${_vidPer==='campagne'?' aan':''}" data-vidper="campagne">Per campagne</button>
+        <span class="cp-bereik">📅 ${fmtD(van)}${van!==tot?' – '+fmtD(tot):''} · periode kies je hierboven</span>
+      </span></h4>
+    <div style="overflow-x:auto"><table class="itable cptabel">
+      <thead><tr><th style="text-align:left">${_vidPer==='campagne'?'Campagne':'Advertentie'}</th><th class="rr" title="3-sec-weergaven ÷ weergaven (hook rate)">% videoweergaven 3 sec</th><th class="rr">Videoweergaven 3 sec</th><th class="rr">Tot 25%</th><th class="rr">Tot 50%</th><th class="rr">Tot 75%</th><th class="rr">Tot 95%</th><th>Kijkcurve</th><th class="rr">ThruPlays (15 sec)</th><th class="rr">Gem. kijktijd</th><th class="rr">CTR (link)</th><th class="rr">Resultaten</th></tr></thead>
+      <tbody>${!rijen ? '<tr><td colspan="12" style="text-align:center;color:var(--muted)">Videocijfers ophalen…</td></tr>'
+        : lijst.length ? lijst.map(v=>`<tr>
+          <td style="text-align:left"><b>${esc(_vidPer==='campagne'?v.campagne:v.ad)}</b>${_vidPer==='campagne'?'':`<small>${esc(v.campagne)}${v.set?' › '+esc(v.set):''}</small>`}</td>
+          <td class="rr"><b>${v.imp?pc(v.v3/v.imp):'—'}</b></td>
+          <td class="rr">${nr(v.v3)}</td><td class="rr">${nr(v.p25)}</td><td class="rr">${nr(v.p50)}</td><td class="rr">${nr(v.p75)}</td><td class="rr">${nr(v.p95)}</td>
+          <td>${curve(v)}</td>
+          <td class="rr">${nr(v.tp)}</td>
+          <td class="rr">${v.plays?tijd(v.sec/v.plays):'—'}</td>
+          <td class="rr">${v.imp?pc(v.lk/v.imp):'—'}</td>
+          <td class="rr"><b>${nr(v.leads)}</b></td></tr>`).join('')
+        : '<tr><td colspan="12" style="text-align:center;color:var(--muted)">Geen videoweergaven in deze periode.</td></tr>'}</tbody>
+    </table></div>
+  </div>`;
+}
 function renderPrestatie(){
   const el = document.getElementById('prestatie');
   const P = state.posts;
@@ -1548,6 +1595,7 @@ function renderPrestatie(){
   el.innerHTML = `
   <div class="inzgrid">
     ${campagneOverzichtHtml()}
+    ${videoHtml()}
     ${waakhondHtml()}
     <div class="inzbox" style="grid-column:1/-1"><h4 style="display:flex;justify-content:space-between;align-items:center;gap:8px">📡 Live advertenties (Meta) <span style="display:flex;gap:6px"><button class="qbtn" id="rapportbtn">🖨 Weekrapport</button><button class="qbtn" id="metasyncbtn">↻ Sync nu</button><button class="qbtn" id="metaherstelbtn" title="Haalt de laatste 90 dagen opnieuw op uit Meta (eenmalig, om oude cijfers te herstellen)">↻ 90 dagen herstellen</button></span></h4>${metaStatsHtml()}</div>
     <div class="inzbox" style="grid-column:1/-1"><h4>📈 Organisch deze maand</h4>
@@ -1582,6 +1630,7 @@ function renderPrestatie(){
     </div>
   </div>`;
 
+  el.querySelectorAll('[data-vidper]').forEach(b=>b.onclick=()=>{ _vidPer = b.dataset.vidper; render(); });
   const cpSel = el.querySelector('#cp_periode');
   if (cpSel) cpSel.onchange = ()=>{ if (cpSel.value==='eigen') { const [v,t] = cpBereik(); _cpVan = v; _cpTot = t; } _cpPeriode = cpSel.value; render(); };
   const cpVan = el.querySelector('#cp_van'), cpTot = el.querySelector('#cp_tot');
