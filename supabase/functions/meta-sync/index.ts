@@ -77,11 +77,11 @@ Deno.serve(async (req) => {
     startD.setDate(startD.getDate() - (dagenTerug - 1));
     const sinds = startD.toISOString().slice(0, 10);
     const range = encodeURIComponent(JSON.stringify({ since: sinds, until: vandaag }));
-    const fields = "campaign_name,adset_name,ad_name,spend,impressions,clicks,inline_link_clicks,reach,actions";
+    const fields = "ad_id,campaign_name,adset_name,ad_name,spend,impressions,clicks,inline_link_clicks,reach,actions";
     let url = `${GRAPH}/${account}/insights?level=ad&fields=${fields}` +
       `&time_increment=1&time_range=${range}&limit=500&access_token=${encodeURIComponent(token)}`;
-    // Meerdere ads kunnen dezelfde naam hebben → aggregeer per (datum, campagne, advertentienaam),
-    // anders botst de upsert ("cannot affect row a second time").
+    // Meerdere ads kunnen dezelfde naam hebben → aggregeer per (datum, campagne, set, advertentienaam),
+    // zodat de unieke sleutel op die vier kolommen nooit botst. ad_id gaat mee als gegeven.
     const agg = new Map<string, Record<string, unknown>>();
     for (let page = 0; page < 40 && url; page++) {
       const res = await fetch(url);
@@ -91,7 +91,7 @@ Deno.serve(async (req) => {
         const leads = leadsUit(r.actions);
         const key = `${r.date_start}|${r.campaign_name ?? ""}|${r.adset_name ?? ""}|${r.ad_name ?? ""}`;
         const cur = agg.get(key) ?? {
-          datum: r.date_start, campagne: r.campaign_name ?? "", advertentieset: r.adset_name ?? "", advertentie: r.ad_name ?? "",
+          datum: r.date_start, ad_id: r.ad_id ?? null, campagne: r.campaign_name ?? "", advertentieset: r.adset_name ?? "", advertentie: r.ad_name ?? "",
           uitgegeven: 0, impressies: 0, kliks: 0, link_kliks: 0, leads: 0, bereik: 0,
           synced_at: new Date().toISOString(),
         };
@@ -110,8 +110,14 @@ Deno.serve(async (req) => {
     // ── wegschrijven met service-role (app leest alleen) ──
     const db = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
     if (rows.length) {
-      const { error } = await db.from("mkt_meta_stats")
-        .upsert(rows, { onConflict: "datum,campagne,advertentieset,advertentie" });
+      // Eerst het venster schoonvegen, dan vers schrijven (fix van 3 sep 2026). Een upsert op
+      // de naamkolommen laat bij elke hernoeming van campagne, set of advertentie de oude rij
+      // náást de nieuwe staan — augustus telde daardoor €1.6k te veel. Delete + insert binnen
+      // het venster neemt altijd de huidige namen uit Meta over. Rijen vóór het venster blijven.
+      const { error: wisFout } = await db.from("mkt_meta_stats")
+        .delete().gte("datum", sinds).lte("datum", vandaag);
+      if (wisFout) return json({ error: "schoonvegen mislukt: " + wisFout.message }, 500);
+      const { error } = await db.from("mkt_meta_stats").insert(rows);
       if (error) return json({ error: "opslaan mislukt: " + error.message }, 500);
     }
 
