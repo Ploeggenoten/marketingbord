@@ -1,6 +1,7 @@
 // ═══ META-SYNC · Supabase Edge Function ═══
 // Haalt advertentie-inzichten (laatste 30 dagen, per dag per advertentie) uit de
-// officiële Meta Marketing API en schrijft ze naar mkt_meta_stats.
+// officiële Meta Marketing API en schrijft ze naar mkt_meta_stats. Daarnaast per campagne
+// status, budget, id en kerncijfers (vandaag / 7 / 30 dagen) naar mkt_meta_campagnes.
 // Secrets (Dashboard → Edge Functions → Secrets):
 //   META_ACCESS_TOKEN   — System User-token met ads_read (Business Manager)
 //   META_AD_ACCOUNT_ID  — advertentieaccount-id, met of zonder 'act_'-prefix
@@ -106,6 +107,48 @@ Deno.serve(async (req) => {
       if (error) return json({ error: "opslaan mislukt: " + error.message }, 500);
     }
 
+    // ── campagne-overzicht (status, budget, id + kerncijfers vandaag/7d/30d) → mkt_meta_campagnes ──
+    // Best-effort: mislukt dit (bijv. tabel nog niet aangemaakt), dan loopt de rest gewoon door.
+    let campagnes = 0;
+    try {
+      const qa = async (path: string) =>
+        await (await fetch(`${GRAPH}/${path}${path.includes("?") ? "&" : "?"}access_token=${encodeURIComponent(token)}`)).json();
+      const cR = await qa(`${account}/campaigns?fields=id,name,effective_status,status,daily_budget,lifetime_budget,objective&limit=300`);
+      const sR = await qa(`${account}/adsets?fields=campaign_id,daily_budget,lifetime_budget,effective_status&limit=500`);
+      const sets = (sR.data ?? []) as { campaign_id: string; daily_budget?: string; lifetime_budget?: string; effective_status: string }[];
+      const perPeriode: Record<string, Record<string, unknown>> = {};
+      const leadsUit = (acts?: { action_type: string; value: string }[]) =>
+        (acts ?? []).filter((x) => LEAD_TYPES.has(x.action_type)).reduce((t, x) => t + Number(x.value || 0), 0);
+      for (const [label, preset] of [["vandaag", "today"], ["d7", "last_7d"], ["d30", "last_30d"]]) {
+        const iR = await qa(`${account}/insights?level=campaign&date_preset=${preset}&limit=300` +
+          `&fields=campaign_id,spend,impressions,reach,frequency,inline_link_clicks,cpm,actions`);
+        for (const r of iR.data ?? []) {
+          const spend = Number(r.spend || 0), imp = Number(r.impressions || 0), lk = Number(r.inline_link_clicks || 0), leads = leadsUit(r.actions);
+          (perPeriode[r.campaign_id] ??= {})[label] = {
+            besteed: spend, weergaven: imp, bereik: Number(r.reach || 0), frequentie: Number(r.frequency || 0),
+            link_kliks: lk, resultaten: leads, cpm: Number(r.cpm || 0),
+            ctr: imp ? lk / imp : null, cpc: lk ? spend / lk : null, cpl: leads ? spend / leads : null,
+          };
+        }
+      }
+      const rijen = (cR.data ?? []).map((c: { id: string; name: string; effective_status: string; status: string; daily_budget?: string; lifetime_budget?: string; objective?: string }) => {
+        const cbo = !!(c.daily_budget || c.lifetime_budget);
+        const setBudget = sets.filter((x) => x.campaign_id === c.id && x.effective_status === "ACTIVE")
+          .reduce((t, x) => t + Number(x.daily_budget || 0), 0) / 100;
+        return {
+          id: c.id, naam: c.name, status: c.effective_status, aan: c.status === "ACTIVE",
+          budget_type: cbo ? "campagne" : "sets",
+          budget_dag: cbo ? (c.daily_budget ? Number(c.daily_budget) / 100 : null) : (setBudget || null),
+          budget_looptijd: c.lifetime_budget ? Number(c.lifetime_budget) / 100 : null,
+          doel: c.objective || "", cijfers: perPeriode[c.id] ?? {}, synced_at: new Date().toISOString(),
+        };
+      });
+      if (rijen.length) {
+        const { error: ce } = await db.from("mkt_meta_campagnes").upsert(rijen, { onConflict: "id" });
+        if (!ce) campagnes = rijen.length;
+      }
+    } catch (_e) { /* campagne-overzicht is best-effort */ }
+
     // ── organisch: Facebook-pagina-posts → resultaten van bord-posts ──
     // (vergt pages_show_list + pages_read_engagement + pagina toegewezen aan de
     //  systeemgebruiker; faalt stil zodat de advertentie-sync nooit meelijdt)
@@ -144,7 +187,7 @@ Deno.serve(async (req) => {
       }
     } catch (_e) { /* organisch is best-effort */ }
 
-    return json({ ok: true, regels: rows.length, organisch, account });
+    return json({ ok: true, regels: rows.length, campagnes, organisch, account });
   } catch (e) {
     return json({ error: String(e) }, 500);
   }
