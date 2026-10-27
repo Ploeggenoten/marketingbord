@@ -225,6 +225,12 @@ nav.fases{background:#20301a;border-bottom:1px solid #33421f;padding:0 18px;disp
 .sr-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:16px;margin-top:10px;font-size:12.5px}
 .sr-grid ul{margin:4px 0 10px;padding-left:18px}.sr-grid li{margin:3px 0}
 .sr-grid table{font-size:12px;margin:4px 0}
+.rl-strook{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:8px;margin:4px 0 12px}
+.rl-kaart{border:1px solid rgba(20,26,11,.12);border-radius:10px;padding:8px 10px;background:#fff;display:flex;flex-direction:column;gap:3px}
+.rl-kaart b{font-size:13px}.rl-kaart small{font-size:11px;color:var(--muted);line-height:1.3}
+.rl-chips{display:flex;flex-wrap:wrap;gap:4px;margin-top:3px}
+.rl-chips span{font-size:11.5px;font-weight:700;padding:2px 6px;border-radius:6px;white-space:nowrap}
+.rl-tip{background:rgba(200,241,53,.12)}
 .vid-camp td{background:var(--dark,#141A0B);color:#C8F135;font-family:Anton,sans-serif;letter-spacing:.04em;text-transform:uppercase;font-size:13px;padding:7px 10px!important;text-align:left}
 .vid-set td{background:rgba(200,241,53,.13);border-top:2px solid rgba(20,26,11,.25)}
 .vid-ad td:first-child{padding-left:30px!important;position:relative}
@@ -1583,6 +1589,19 @@ function meter(k, v){
   const kl = m.laag ? (v < m.goed ? 'goed' : v <= m.matig ? 'matig' : 'slecht') : (v > m.goed || (k==='doorzet'&&v>=m.goed) ? 'goed' : v >= m.matig ? 'matig' : 'slecht');
   return ` class="rr m-${kl}" title="${m.t}"`;
 }
+// richtlijn-strook: per meter in één oogopslag wat goed, matig en slecht is (zelfde grenzen als de kleuren in de tabel)
+const RICHTLIJN = {
+  hookrate: ['Hookrate', '% videoweergaven 3 sec — pakt de opening?', '> 22%', '15–22%', '< 15%'],
+  vasthoud: ['Vasthoudrate', 'ThruPlays ÷ 3-sec — kijken ze door?', '> 35%', '28–35%', '< 28%'],
+  ctr:      ['CTR (link)', 'linkklikken ÷ weergaven', '> 2%', '1,5–2%', '< 1,5%'],
+  cpc:      ['CPC (link)', 'kosten per linkklik', '< €0,80', '€0,80–1', '> €1'],
+  cpl:      ['CPL', 'kosten per lead', '< €5', '€5–10', '> €10'],
+};
+function richtlijnHtml(keys, tip){
+  return `<div class="rl-strook">${keys.map(k=>{ const [naam, uitleg, g, m, sl] = RICHTLIJN[k];
+    return `<div class="rl-kaart"><b>${naam}</b><small>${uitleg}</small><div class="rl-chips"><span class="m-goed">🟢 ${g}</span><span class="m-matig">🟠 ${m}</span><span class="m-slecht">🔴 ${sl}</span></div></div>`; }).join('')}
+    ${tip?`<div class="rl-kaart rl-tip"><b>Kijkcurve (25–95%)</b><small>${tip}</small></div>`:''}</div>`;
+}
 function spelregelsHtml(){
   return `<details class="spelregels"><summary>📘 Spelregels van de agent — meters, beslisregels en diagnoses</summary>
     <div class="sr-grid">
@@ -1705,6 +1724,7 @@ function videoHtml(){
         <button class="qbtn${_vidPer==='campagne'?' aan':''}" data-vidper="campagne">Per campagne</button>
         <span class="cp-bereik">📅 ${fmtD(van)}${van!==tot?' – '+fmtD(tot):''} · periode kies je hierboven${aanNu?' · alleen campagnes die aanstaan':''}</span>
       </span></h4>
+    ${richtlijnHtml(['hookrate','vasthoud','ctr','cpc','cpl'], 'Hoe vlakker, hoe beter. Valt de curve vóór 25% hard weg, dan verliest het midden van de video de kijker. Hookrate laag maar vasthoudrate goed → alleen de eerste 3 sec vervangen.')}
     <div style="overflow-x:auto"><table class="itable cptabel">
       <thead><tr><th style="text-align:left">${_vidPer==='campagne'?'Campagne':'Advertentie'}</th><th class="rr" title="3-sec-weergaven ÷ weergaven (hook rate)">% videoweergaven 3 sec</th><th class="rr">Videoweergaven 3 sec</th><th class="rr">Tot 25%</th><th class="rr">Tot 50%</th><th class="rr">Tot 75%</th><th class="rr">Tot 95%</th><th>Kijkcurve</th><th class="rr">ThruPlays (15 sec)</th><th class="rr" title="ThruPlays ÷ 3-sec-weergaven">Vasthoudrate</th><th class="rr">Gem. kijktijd</th><th class="rr">CTR (link)</th><th class="rr">Resultaten</th></tr></thead>
       <tbody>${!rijen ? '<tr><td colspan="13" style="text-align:center;color:var(--muted)">Videocijfers ophalen…</td></tr>'
