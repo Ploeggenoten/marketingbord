@@ -213,9 +213,9 @@ Maak nu de standaardanalyse volgens §13, als JSON in het gevraagde schema. Per 
 Geldbedragen met €-teken en komma (€4,26), percentages met komma (1,68%). Klantnamen mogen (intern rapport).`;
 
     const claude = new Anthropic({ apiKey });
-    const resp = await claude.beta.messages.create({
+    const resp = await claude.beta.messages.stream({   // streamen: nodig bij een grote max_tokens
       model: "claude-opus-5-5",
-      max_tokens: 16000,
+      max_tokens: 40000,   // 16000 was te krap: het rapport werd afgekapt
       thinking: { type: "adaptive" },
       betas: ["server-side-fallback-2026-07-01"],
       fallbacks: "default",
@@ -242,7 +242,7 @@ Geldbedragen met €-teken en komma (€4,26), percentages met komma (1,68%). Kl
           } } },
       },
       messages: [{ role: "user", content: prompt }],
-    } as never);
+    } as never).finalMessage();
     const r = resp as unknown as { stop_reason: string; content: { type: string; text?: string }[] };
     if (r.stop_reason === "refusal") return json({ ok: false, error: "Claude weigerde de analyse" }, 502);
     if (r.stop_reason === "max_tokens") return json({ ok: false, error: "analyse afgekapt (max_tokens) — niets uitgevoerd" }, 502);
