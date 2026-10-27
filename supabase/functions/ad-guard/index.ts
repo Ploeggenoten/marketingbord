@@ -210,6 +210,8 @@ BRYANS ANTWOORDEN OP EERDERE VRAGEN (o.a. nabelcijfers — gebruik ze):
 ${antwoorden}
 
 Maak nu de standaardanalyse volgens §13, als JSON in het gevraagde schema. Per waarschuwing precies één concrete actie.
+Houd het rapport kort en scanbaar: hooguit 10 waarschuwingen (alleen wat ertoe doet, belangrijkste eerst), reden/diagnose/actie elk hooguit 2 zinnen,
+per campagne één toelichting van hooguit 1 zin, alleen campagnes die aanstaan in "campagnes". Liever iets onder "niet_beoordeeld" dan lange uitleg.
 Geldbedragen met €-teken en komma (€4,26), percentages met komma (1,68%). Klantnamen mogen (intern rapport).`;
 
     const claude = new Anthropic({ apiKey });
@@ -245,7 +247,12 @@ Geldbedragen met €-teken en komma (€4,26), percentages met komma (1,68%). Kl
     } as never).finalMessage();
     const r = resp as unknown as { stop_reason: string; content: { type: string; text?: string }[] };
     if (r.stop_reason === "refusal") return json({ ok: false, error: "Claude weigerde de analyse" }, 502);
-    if (r.stop_reason === "max_tokens") return json({ ok: false, error: "analyse afgekapt (max_tokens) — niets uitgevoerd" }, 502);
+    if (r.stop_reason === "max_tokens") {
+      // meld waar de ruimte heen ging, zodat we zien of het denkwerk of de tekst te lang werd
+      const tekst = r.content.find((b) => b.type === "text")?.text ?? "";
+      const denk = r.content.filter((b) => b.type === "thinking").reduce((t, b) => t + ((b as { thinking?: string }).thinking?.length ?? 0), 0);
+      return json({ ok: false, error: `analyse afgekapt (max_tokens) — niets uitgevoerd. Tekens denkwerk: ${denk}, tekens rapport: ${tekst.length}. Einde: …${tekst.slice(-300)}` }, 502);
+    }
     const rapport = JSON.parse(r.content.find((b) => b.type === "text")!.text!) as {
       waarschuwingen: { niveau: string; oordeel: string; campagne: string; advertentieset?: string; advertentie?: string; reden: string; actie: string }[] };
 
