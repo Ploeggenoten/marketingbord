@@ -225,12 +225,17 @@ nav.fases{background:#20301a;border-bottom:1px solid #33421f;padding:0 18px;disp
 .sr-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:16px;margin-top:10px;font-size:12.5px}
 .sr-grid ul{margin:4px 0 10px;padding-left:18px}.sr-grid li{margin:3px 0}
 .sr-grid table{font-size:12px;margin:4px 0}
-.rl-strook{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:8px;margin:4px 0 12px}
-.rl-kaart{border:1px solid rgba(20,26,11,.12);border-radius:10px;padding:8px 10px;background:#fff;display:flex;flex-direction:column;gap:3px}
-.rl-kaart b{font-size:13px}.rl-kaart small{font-size:11px;color:var(--muted);line-height:1.3}
-.rl-chips{display:flex;flex-wrap:wrap;gap:4px;margin-top:3px}
-.rl-chips span{font-size:11.5px;font-weight:700;padding:2px 6px;border-radius:6px;white-space:nowrap}
-.rl-tip{background:rgba(200,241,53,.12)}
+.rl-wrap{margin:4px 0 14px;overflow-x:auto}
+.rl-tabel{width:100%;border-collapse:separate;border-spacing:0;font-size:13px;border:1px solid rgba(20,26,11,.15);border-radius:10px;overflow:hidden}
+.rl-tabel th,.rl-tabel td{padding:7px 10px;text-align:center;border-bottom:1px solid rgba(20,26,11,.08)}
+.rl-tabel thead th{background:#f6f8ef;vertical-align:top}
+.rl-tabel thead th b{display:block;font-size:13px}.rl-tabel thead th small{display:block;font-size:11px;font-weight:400;color:var(--muted)}
+.rl-tabel tbody th{text-align:left;white-space:nowrap;font-size:13px}
+.rl-tabel tbody td{font-weight:700;font-size:14px}
+.rl-goed th,.rl-goed td{background:#eaf6ee;color:#1e6b3f}
+.rl-twijfel th,.rl-twijfel td{background:#fff4dc;color:#8a5a00}
+.rl-slecht th,.rl-slecht td{background:#fdeceb;color:#a3261b;border-bottom:0}
+.rl-tip{margin-top:6px;font-size:12px;color:var(--muted)}
 .vid-camp td{background:var(--dark,#141A0B);color:#C8F135;font-family:Anton,sans-serif;letter-spacing:.04em;text-transform:uppercase;font-size:13px;padding:7px 10px!important;text-align:left}
 .vid-set td{background:rgba(200,241,53,.13);border-top:2px solid rgba(20,26,11,.25)}
 .vid-ad td:first-child{padding-left:30px!important;position:relative}
@@ -1598,9 +1603,11 @@ const RICHTLIJN = {
   cpl:      ['CPL', 'kosten per lead', '< €5', '€5–10', '> €10'],
 };
 function richtlijnHtml(keys, tip){
-  return `<div class="rl-strook">${keys.map(k=>{ const [naam, uitleg, g, m, sl] = RICHTLIJN[k];
-    return `<div class="rl-kaart"><b>${naam}</b><small>${uitleg}</small><div class="rl-chips"><span class="m-goed">🟢 ${g}</span><span class="m-matig">🟠 ${m}</span><span class="m-slecht">🔴 ${sl}</span></div></div>`; }).join('')}
-    ${tip?`<div class="rl-kaart rl-tip"><b>Kijkcurve (25–95%)</b><small>${tip}</small></div>`:''}</div>`;
+  const rij = (kl, label, i) => `<tr class="rl-${kl}"><th>${label}</th>${keys.map(k=>`<td>${RICHTLIJN[k][i]}</td>`).join('')}</tr>`;
+  return `<div class="rl-wrap"><table class="rl-tabel">
+      <thead><tr><th></th>${keys.map(k=>`<th><b>${RICHTLIJN[k][0]}</b><small>${RICHTLIJN[k][1]}</small></th>`).join('')}</tr></thead>
+      <tbody>${rij('goed','🟢 Goed',2)}${rij('twijfel','🟠 Twijfel',3)}${rij('slecht','🔴 Slecht',4)}</tbody>
+    </table>${tip?`<div class="rl-tip"><b>Kijkcurve (25–95%):</b> ${tip}</div>`:''}</div>`;
 }
 function spelregelsHtml(){
   return `<details class="spelregels"><summary>📘 Spelregels van de agent — meters, beslisregels en diagnoses</summary>
