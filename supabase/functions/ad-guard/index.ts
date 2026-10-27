@@ -221,7 +221,7 @@ Geldbedragen met €-teken en komma (€4,26), percentages met komma (1,68%). Kl
       fallbacks: "default",
       system: INSTRUCTIE,
       output_config: {
-        effort: "high",
+        effort: "medium",   // high duurde > 150 s; medium blijft ruim binnen de tijdslimiet van Supabase
         format: { type: "json_schema", schema: {
           type: "object", additionalProperties: false,
           required: ["kort_oordeel", "campagnes", "waarschuwingen", "strategisch_punt", "niet_beoordeeld", "vraag"],

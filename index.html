@@ -1394,7 +1394,7 @@ function agentRapportHtml(){
   const kop = `<h4 style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">🧠 Advies van de agent
       <span class="cp-filters">${R.length>1?`<select id="ar_kies" class="cp-periode">${R.map((r,i)=>`<option value="${i}"${i===_arIndex?' selected':''}>${new Date(r.created_at).toLocaleString('nl-NL',{weekday:'short',day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'})}${i===0?' (nieuwste)':''}</option>`).join('')}</select>`:''}
         <button class="qbtn" id="ar_run">🤖 Nieuw advies maken</button></span></h4>`;
-  if (!R.length) return `<div class="inzbox" style="grid-column:1/-1">${kop}<div class="toel" style="margin:0">Nog geen advies. De agent draait elke dag om 08:00 en 14:00, of klik op <b>Nieuw advies maken</b> (duurt ± 2–4 minuten).</div></div>`;
+  if (!R.length) return `<div class="inzbox" style="grid-column:1/-1">${kop}<div class="toel" style="margin:0">Nog geen advies. De agent maakt elke ochtend om 08:00 een nieuw advies, of klik op <b>Nieuw advies maken</b> (duurt ± 2–4 minuten).</div></div>`;
   const rij = R[Math.min(_arIndex, R.length-1)], a = rij.rapport || {};
   if (a.fout) return `<div class="inzbox" style="grid-column:1/-1">${kop}<div class="toel" style="margin:0">⚠ Deze run is mislukt: ${esc(a.fout)}</div></div>`;
   const waar = w => [w.campagne, w.advertentieset, w.advertentie].filter(Boolean).map(esc).join(' › ');
