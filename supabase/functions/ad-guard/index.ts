@@ -210,6 +210,10 @@ BRYANS ANTWOORDEN OP EERDERE VRAGEN (o.a. nabelcijfers — gebruik ze):
 ${antwoorden}
 
 Maak nu de standaardanalyse volgens §13, als JSON in het gevraagde schema. Per waarschuwing precies één concrete actie.
+OORDEEL PER ADVERTENTIE (belangrijkste onderdeel): zet in "advertenties" voor ELKE advertentie uit de data precies één regel —
+ook als het oordeel Te vroeg of Houden is — met campagne, advertentieset en advertentie exact zoals in de data, een oordeel,
+een niveau, een reden van hooguit 1 zin (met het doorslaggevende cijfer) en één concrete actie van hooguit 1 zin.
+Bryan wil per advertentie zien wat werkt en wat niet; vergelijk advertenties binnen dezelfde set waar de data dat toelaat (§8).
 Houd het rapport kort en scanbaar: hooguit 10 waarschuwingen (alleen wat ertoe doet, belangrijkste eerst), reden/diagnose/actie elk hooguit 2 zinnen,
 per campagne één toelichting van hooguit 1 zin, alleen campagnes die aanstaan in "campagnes". Liever iets onder "niet_beoordeeld" dan lange uitleg.
 Geldbedragen met €-teken en komma (€4,26), percentages met komma (1,68%). Klantnamen mogen (intern rapport).`;
@@ -226,11 +230,18 @@ Geldbedragen met €-teken en komma (€4,26), percentages met komma (1,68%). Kl
         effort: "medium",   // high duurde > 150 s; medium blijft ruim binnen de tijdslimiet van Supabase
         format: { type: "json_schema", schema: {
           type: "object", additionalProperties: false,
-          required: ["kort_oordeel", "campagnes", "waarschuwingen", "strategisch_punt", "niet_beoordeeld", "vraag"],
+          required: ["kort_oordeel", "campagnes", "advertenties", "waarschuwingen", "strategisch_punt", "niet_beoordeeld", "vraag"],
           properties: {
             kort_oordeel: { type: "string" },
             campagnes: { type: "array", items: { type: "object", additionalProperties: false, required: ["campagne", "oordeel", "toelichting"],
               properties: { campagne: { type: "string" }, oordeel: { type: "string", enum: ["Opschalen", "Houden", "Monitoren", "Pauzeren", "Stoppen", "Te vroeg"] }, toelichting: { type: "string" } } } },
+            advertenties: { type: "array", items: { type: "object", additionalProperties: false,
+              required: ["campagne", "advertentieset", "advertentie", "oordeel", "niveau", "reden", "actie"],
+              properties: {
+                campagne: { type: "string" }, advertentieset: { type: "string" }, advertentie: { type: "string" },
+                oordeel: { type: "string", enum: ["Opschalen", "Houden", "Monitoren", "Pauzeren", "Stoppen", "Te vroeg"] },
+                niveau: { type: "string", enum: ["actie_vandaag", "let_op", "goed", "te_vroeg"] },
+                reden: { type: "string" }, actie: { type: "string" } } } },
             waarschuwingen: { type: "array", items: { type: "object", additionalProperties: false,
               required: ["niveau", "oordeel", "campagne", "reden", "diagnose", "actie"],
               properties: {
