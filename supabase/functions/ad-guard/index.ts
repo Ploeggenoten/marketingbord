@@ -17,7 +17,7 @@
 //  - Alles gelogd in mkt_ad_besluiten.
 // Secrets: META_ACCESS_TOKEN (+ads_management om uit te voeren), META_AD_ACCOUNT_ID,
 // ANTHROPIC_API_KEY, CRON_SECRET.
-import { createClient } from "jsr:@supabase/supabase-js@2";
+import { createClient } from "npm:@supabase/supabase-js@2";
 import Anthropic from "npm:@anthropic-ai/sdk";
 
 const GRAPH = "https://graph.facebook.com/v21.0";

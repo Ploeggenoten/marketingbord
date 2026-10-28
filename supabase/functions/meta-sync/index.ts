@@ -8,7 +8,7 @@
 //   CRON_SECRET         — machine-sleutel waarmee pg_cron dagelijks mag syncen
 // Elke ingelogde teamgebruiker mag syncen; de token blijft server-side.
 // Dagelijkse sync: pg_cron → net.http_post met header x-cron-key = CRON_SECRET.
-import { createClient } from "jsr:@supabase/supabase-js@2";
+import { createClient } from "npm:@supabase/supabase-js@2";
 
 const GRAPH = "https://graph.facebook.com/v21.0";
 // Meta meldt dezelfde lead onder meerdere actie-namen ("lead" is het totaal; formulier-leads
